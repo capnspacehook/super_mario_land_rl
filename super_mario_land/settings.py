@@ -1,0 +1,82 @@
+from torch import nn
+
+from super_mario_land.ram import (
+    FLYING_MOTH_ARROW_TYPE_ID,
+    BONE_FISH_TYPE_ID,
+    SEAHORSE_TYPE_ID,
+)
+
+# General env settings
+FRAME_SKIP = 4
+
+# Observation settings
+N_GAME_AREA_STACK = 12  # number of game area observations to stack
+N_MARIO_OBS_STACK = 12  # number of mario observations to stack
+N_ENTITY_OBS_STACK = 12  # number of entity observations to stack
+N_SCALAR_OBS_STACK = 2  # number of scalar observations to stack
+N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
+
+# Policy settings
+ACTIVATION_FN = nn.ReLU
+GAME_AREA_EMBEDDING_DIM = 4
+USE_MARIO_ENTITY_OBS = False
+MARIO_HIDDEN_UNITS = 64
+ENTITY_EMBEDDING_DIM = 4
+ENTITY_HIDDEN_UNITS = 64
+ACTOR_HIDDEN_UNITS = 2048
+CRITIC_HIDDEN_UNITS = 2048
+
+# Time settings
+MIN_TIME = 10
+STARTING_TIME = 400
+DEATH_TIME_LOSS = 10
+
+# Reward values
+HIT_PUNISHMENT = -10
+DEATH_SCALE = -10
+DEATH_PUNISHMENT = -30
+GAME_OVER_PUNISHMENT = -50
+CLOCK_PUNISHMENT = -0.01
+SCORE_REWARD_COEF = 0.01
+COIN_REWARD = 2  # +100 score when getting a coin must be factored in
+FORWARD_REWARD_COEF = 1
+BACKWARD_PUNISHMENT_COEF = 0.25
+MUSHROOM_REWARD = 15  # 1000 score
+# TODO: add reward for killing enemies with fireballs
+FLOWER_REWARD = 15  # 1000 score
+# TODO: make reward when star bug is fixed/mitigated
+STAR_REWARD = -35  # 1000 score
+HEART_REWARD = 30  # 1000 score
+HEART_FARM_PUNISHMENT = -60
+MOVING_PLATFORM_DISTANCE_REWARD_MAX = 0.5
+MOVING_PLATFORM_X_REWARD_COEF = 0.15
+MOVING_PLATFORM_Y_REWARD_COEF = 1.25
+BOULDER_REWARD = 5
+HIT_BOSS_REWARD = 5
+KILL_BOSS_REWARD = 25
+LEVEL_CLEAR_REWARD = 35
+LEVEL_CLEAR_TOP_REWARD = 20
+LEVEL_CLEAR_LIVES_COEF_REWARD = 5
+LEVEL_CLEAR_BIG_REWARD = 5
+LEVEL_CLEAR_FIRE_REWARD = 10
+
+REWARD_SCALE = 0.004
+
+# Env stochasticity settings
+RANDOM_NOOP_FRAMES = 60
+RANDOM_NOOP_FRAMES_WITH_ENEMIES = 20
+RANDOM_POWERUP_CHANCE = 25
+STARTING_LIVES_MIN = 1
+STARTING_LIVES_MAX = 3
+MIN_RANDOM_TIME = 60
+
+# Heart farming detection settings
+HEART_FARM_X_POS_MULTIPLE = 15
+
+# Cell selection settings
+X_POS_MULTIPLE = 150
+Y_POS_MULTIPLE = 30
+ENTITY_X_POS_MULTIPLE = 200
+ENTITY_Y_POS_MULTIPLE = 40
+FRAME_CELL_CHECK = 30
+ENTITIES_IGNORE_Y_POS = [FLYING_MOTH_ARROW_TYPE_ID, BONE_FISH_TYPE_ID, SEAHORSE_TYPE_ID]

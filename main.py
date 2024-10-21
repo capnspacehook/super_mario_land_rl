@@ -66,6 +66,13 @@ def train(args):
     else:
         raise ValueError(f"Invalid --vec.backend (serial/multiprocessing/ray).")
 
+    evalVecenv = pufferlib.vector.make(
+        createSMLEnv,
+        env_kwargs=dict(isEval=True),
+        backend=pufferlib.vector.Serial,
+        num_envs=1,
+    )
+
     vecenv = pufferlib.vector.make(
         createSMLEnv,
         num_envs=args.vec.num_envs,
@@ -82,13 +89,6 @@ def train(args):
 
     args.train.env = "sml"
     data = clean_pufferl.create(args.train, vecenv, policy, wandb=args.wandb)
-
-    evalVecenv = pufferlib.vector.make(
-        createSMLEnv,
-        env_kwargs=dict(isEval=True),
-        backend=pufferlib.vector.Serial,
-        num_envs=1,
-    )
 
     try:
         nextEvalAt = args.train.eval_interval

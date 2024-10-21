@@ -20,6 +20,11 @@ SELECT EXISTS(
 """
 
 
+DELETE_CELLS_AND_CELL_SCORES = """-- name: delete_cells_and_cell_scores \\:exec
+TRUNCATE cells CASCADE
+"""
+
+
 DELETE_OLD_CELL_SCORES = """-- name: delete_old_cell_scores \\:exec
 WITH ranked_scores AS (
     SELECT 
@@ -54,9 +59,10 @@ class GetCellRow:
 
 
 GET_FIRST_CELL = """-- name: get_first_cell \\:one
-SELECT id, action, max_no_ops, initial, state
-FROM cells
-ORDER BY id
+SELECT c.id, action, max_no_ops, initial, state
+FROM cells AS c
+CROSS JOIN max_sections AS m
+WHERE c.section = m.section AND initial = TRUE
 LIMIT 1
 """
 
@@ -203,7 +209,7 @@ WHERE id = 1
 UPSERT_MAX_SECTION = """-- name: upsert_max_section \\:exec
 INSERT INTO max_sections (id, section)
 VALUES (1, :p1)
-ON CONFLICT DO UPDATE
+ON CONFLICT (id) DO UPDATE
 SET section = :p1
 """
 
@@ -217,6 +223,9 @@ class Querier:
         if row is None:
             return None
         return row[0]
+
+    def delete_cells_and_cell_scores(self) -> None:
+        self._conn.execute(sqlalchemy.text(DELETE_CELLS_AND_CELL_SCORES))
 
     def delete_old_cell_scores(self) -> None:
         self._conn.execute(sqlalchemy.text(DELETE_OLD_CELL_SCORES))

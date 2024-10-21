@@ -1,7 +1,10 @@
+-- name: DeleteCellsAndCellScores :exec
+TRUNCATE cells CASCADE;
+
 -- name: UpsertMaxSection :exec
 INSERT INTO max_sections (id, section)
 VALUES (1, $1)
-ON CONFLICT DO UPDATE
+ON CONFLICT (id) DO UPDATE
 SET section = $1;
 
 -- name: UpdateMaxSection :exec
@@ -95,9 +98,10 @@ FROM cells AS c
 JOIN rand_id AS ri ON ri.id = c.id WHERE c.id = ri.id;
 
 -- name: GetFirstCell :one
-SELECT id, action, max_no_ops, initial, state
-FROM cells
-ORDER BY id
+SELECT c.id, action, max_no_ops, initial, state
+FROM cells AS c
+CROSS JOIN max_sections AS m
+WHERE c.section = m.section AND initial = TRUE
 LIMIT 1;
 
 -- name: GetCell :one

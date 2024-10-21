@@ -109,6 +109,7 @@ projectiles = (
 flying_moth_arrow = (24, [172, 188])
 
 # Level specific enemies
+# TODO: make enemies have unique IDs?
 sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
 moth = (19, sharedEnemy1)
 flying_moth = (19, [192, 193, 194, 195, 208, 209, 210, 211])

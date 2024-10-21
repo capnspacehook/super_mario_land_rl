@@ -208,6 +208,7 @@ def calculateMeanSpeeds(
     return np.mean(rawXSpeeds), np.mean(rawYSpeeds)
 
 
+# TODO: add is in air or not, maybe to mario obs?
 def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
     return np.array(
         np.concatenate(

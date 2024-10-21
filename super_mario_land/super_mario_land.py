@@ -29,15 +29,15 @@ from recorder import Recorder
 
 
 worldToNextLevelState = {
-    (1, 1): 3,
-    (1, 2): 6,
-    (1, 3): 9,
-    (2, 1): 12,
-    (2, 2): 15,
-    (3, 1): 18,
-    (3, 2): 21,
-    (3, 3): 24,
-    (4, 1): 27,
+    (1, 1): 2,
+    (1, 2): 4,
+    (1, 3): 6,
+    (2, 1): 8,
+    (2, 2): 10,
+    (3, 1): 12,
+    (3, 2): 14,
+    (3, 3): 16,
+    (4, 1): 18,
 }
 
 
@@ -60,7 +60,7 @@ class MarioLandEnv(Env):
         self.interactive = False
 
         self.isEval = isEval
-        self.maxLevel = "1-1"
+        self.maxLevel = MAX_START_LEVEL
         self.cellScore = 0
         self.cellID = 0
         self.cellCheckCounter = 0
@@ -93,7 +93,7 @@ class MarioLandEnv(Env):
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
 
-        self._initDB(stateDir)
+        self._initDB()
 
         # setup action and observation spaces, initialize buttons
         self._initSpaces()
@@ -184,22 +184,39 @@ class MarioLandEnv(Env):
             button: r_button for button, r_button in zip(self._buttons, self._buttons_release)
         }
 
-    def _initDB(self, stateDir):
+    def _initDB(self):
         engine = create_engine("postgresql+psycopg://postgres:password@localhost/postgres")
         self.stateManager = StateManager(engine)
-        with open(self.stateFiles[1], "rb") as f:
-            self.pyboy.load_state(f)
-            curState = self.gameState()
-            cellHash, hashInput = self.cellHash(curState, isInitial=True)
-            if self.stateManager.cell_exists(cellHash):
-                return
 
-            f.seek(0)
-            state = memoryview(f.read())
-            self.stateManager.insert_initial_cell(cellHash, hashInput, RANDOM_NOOP_FRAMES, "1-1", state)
+        # only setup DB in the eval env so it's done once
+        if not self.isEval:
+            return
 
-        if self.isEval:
-            self.stateManager.upsert_max_section(self.maxLevel)
+        # create tables and indexes if they don't exist already
+        self.stateManager.init_schema()
+        # delete existing cells and cell scores from a previous run
+        self.stateManager.delete_cells_and_cell_scores()
+
+        # create cells from beginning of every level
+        for i in range(0, 20, 2):
+            stateFile = self.stateFiles[i]
+            with open(stateFile, "rb") as f:
+                self.pyboy.load_state(f)
+                curState = self.gameState()
+                cellHash, hashInput = self.cellHash(curState, isInitial=True)
+                if self.stateManager.cell_exists(cellHash):
+                    return
+
+                levelName = f"{curState.world[0]}-{curState.world[1]}"
+                f.seek(0)
+                state = memoryview(f.read())
+
+                self.stateManager.insert_initial_cell(
+                    cellHash, hashInput, RANDOM_NOOP_FRAMES, levelName, state
+                )
+
+        # set starting max level
+        self.stateManager.upsert_max_section(self.maxLevel)
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
@@ -913,7 +930,7 @@ class MarioLandEnv(Env):
     def sendInputs(self, actions: list[int]):
         # release buttons that were pressed in the past that are not
         # still being pressed
-        currentlyHeld = [b for b in self._held_buttons if self._held_buttons[b] == True]
+        currentlyHeld = [b for b in self._held_buttons if self._held_buttons[b]]
         for heldButton in currentlyHeld:
             if heldButton not in actions:
                 release = self._release_button[heldButton]

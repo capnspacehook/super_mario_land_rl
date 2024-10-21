@@ -10,6 +10,20 @@ class StateManager(object):
     def __init__(self, engine: sqlalchemy.Engine) -> None:
         self.engine = engine
 
+    def init_schema(self):
+        with open("database/schema.sql") as f:
+            schema = f.read()
+
+        with self.engine.connect() as conn:
+            conn.execute(sqlalchemy.text(schema))
+            conn.commit()
+
+    def delete_cells_and_cell_scores(self):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.delete_cells_and_cell_scores()
+            conn.commit()
+
     def cell_exists(self, hash: str) -> bool:
         with self.engine.connect() as conn:
             q = Querier(conn)

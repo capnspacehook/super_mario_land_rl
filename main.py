@@ -26,6 +26,7 @@ import clean_pufferl
 from super_mario_land.policy import Policy
 import super_mario_land.settings
 from register import createSMLEnv
+from wrappers import VecRunningMean
 
 
 def get_constants(module):
@@ -82,6 +83,7 @@ def train(args):
         zero_copy=args.vec.zero_copy,
         backend=backend,
     )
+    vecenv = VecRunningMean(vecenv, gamma=args.train.gamma)
     policy = make_policy(vecenv.driver_env, args.use_rnn).to(args.train.device)
 
     if args.train.seed == -1:

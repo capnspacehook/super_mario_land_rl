@@ -61,7 +61,7 @@ class MarioLandEnv(Env):
 
         self.isEval = isEval
         self.maxLevel = MAX_START_LEVEL
-        self.cellScore = 0
+        self.cellScore = 0.0
         self.cellID = 0
         self.cellCheckCounter = 0
         self.levelStr = ""
@@ -248,7 +248,7 @@ class MarioLandEnv(Env):
             self.stateManager.delete_old_cell_scores()
 
         # reset counters
-        self.cellScore = 0
+        self.cellScore = 0.0
         self.cellCheckCounter = 0
         self.episodeProgress = 0
         self.levelClearCounter = 0
@@ -495,7 +495,7 @@ class MarioLandEnv(Env):
                 self.onGroundFor += 1
 
             # compute reward, handle dying or level completion
-            reward = self.reward(curState) * REWARD_SCALE
+            reward = self.reward(curState)
             totalReward += reward
 
             if self.isEval:
@@ -527,7 +527,7 @@ class MarioLandEnv(Env):
             info = self.info(curState)
 
         if self.isPlaytest:
-            self.printGameState(obs, totalReward / REWARD_SCALE, curState)
+            self.printGameState(obs, totalReward, curState)
 
         self.prevState = curState
 
@@ -536,13 +536,12 @@ class MarioLandEnv(Env):
     def reward(self, curState: MarioLandGameState) -> float:
         # return punishment on mario's death
         if self._isDead(curState):
-            consecutiveDeaths = self.deathCounter * DEATH_SCALE
             self.deathCounter += 1
 
             if curState.livesLeft == 0:
-                return GAME_OVER_PUNISHMENT + consecutiveDeaths
+                return GAME_OVER_PUNISHMENT
 
-            return DEATH_PUNISHMENT + consecutiveDeaths
+            return DEATH_PUNISHMENT
 
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
@@ -567,7 +566,11 @@ class MarioLandEnv(Env):
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
 
-        # reward or punish depending on the speed and director mario
+        # reward level progress
+        progress = np.clip(curState.levelProgressMax - self.prevState.levelProgressMax, 0, MARIO_MAX_X_SPEED)
+        progress = progress * PROGRESS_REWARD_COEF
+
+        # reward or punish depending on the speed and direction mario
         # is traveling
         xSpeed = np.clip(curState.xPos - self.prevState.xPos, -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
         movement = 0
@@ -600,7 +603,9 @@ class MarioLandEnv(Env):
         movPlatObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
         if onGround and onMovingPlatform:
             ySpeed = np.clip(curState.yPos - self.prevState.yPos, -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
-            movingPlatform += max(0, xSpeed) * MOVING_PLATFORM_X_REWARD_COEF
+            # don't reward when moving forward on a moving platform
+            if not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]:
+                movingPlatform += max(0, xSpeed) * MOVING_PLATFORM_X_REWARD_COEF
             movingPlatform += max(0, ySpeed) * MOVING_PLATFORM_Y_REWARD_COEF
 
             curPlatPos = np.array((curState.xPos, curState.yPos))
@@ -625,6 +630,7 @@ class MarioLandEnv(Env):
             curState.world[0] == 3
             and onGround
             and xSpeed > 0
+            and not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]
             and self._standingOnTiles(bouncing_boulder_tiles)
         ):
             standingOnBoulder = BOULDER_REWARD
@@ -661,7 +667,16 @@ class MarioLandEnv(Env):
                 boss = KILL_BOSS_REWARD
 
         reward = (
-            clock + movement + score + coins + movingPlatform + standingOnBoulder + powerup + heart + boss
+            clock
+            + progress
+            + movement
+            + score
+            + coins
+            + movingPlatform
+            + standingOnBoulder
+            + powerup
+            + heart
+            + boss
         )
 
         return reward
@@ -851,7 +866,7 @@ class MarioLandEnv(Env):
         self.cellScore += reward
 
         if done:
-            self.stateManager.record_score(self.cellID, self.cellScore)
+            self.stateManager.record_score(self.cellID, float(self.cellScore))
             return
 
         # only check if this cell is new every N frames to avoid

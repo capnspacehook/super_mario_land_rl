@@ -44,14 +44,15 @@ DEATH_PUNISHMENT = -30
 GAME_OVER_PUNISHMENT = -50
 # added every step to encourage finishing levels faster
 # TODO: remove this?
-CLOCK_PUNISHMENT = -0.01
+CLOCK_PUNISHMENT = 0
 # score reward is this multiplied by the amount the score increased
 SCORE_REWARD_COEF = 0.01
 COIN_REWARD = 2  # +100 score when getting a coin must be factored in
+PROGRESS_REWARD_COEF = 0
 # main reward, mario's X speed multiplied by this
 FORWARD_REWARD_COEF = 1
 # punish going backwards, mario's X speed is multiplied by this
-BACKWARD_PUNISHMENT_COEF = 0.25
+BACKWARD_PUNISHMENT_COEF = 0
 MUSHROOM_REWARD = 15  # 1000 score
 # TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 15  # 1000 score
@@ -81,8 +82,6 @@ LEVEL_CLEAR_TOP_REWARD = 20
 LEVEL_CLEAR_LIVES_COEF_REWARD = 5
 LEVEL_CLEAR_BIG_REWARD = 5
 LEVEL_CLEAR_FIRE_REWARD = 10
-
-REWARD_SCALE = 0.004
 
 # Env stochasticity settings
 RANDOM_NOOP_FRAMES = 60

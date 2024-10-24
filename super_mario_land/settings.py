@@ -44,7 +44,7 @@ DEATH_PUNISHMENT = -30
 GAME_OVER_PUNISHMENT = -50
 # added every step to encourage finishing levels faster
 # TODO: remove this?
-CLOCK_PUNISHMENT = 0
+CLOCK_PUNISHMENT = -0.01
 # score reward is this multiplied by the amount the score increased
 SCORE_REWARD_COEF = 0.01
 COIN_REWARD = 2  # +100 score when getting a coin must be factored in
@@ -52,7 +52,7 @@ PROGRESS_REWARD_COEF = 0
 # main reward, mario's X speed multiplied by this
 FORWARD_REWARD_COEF = 1
 # punish going backwards, mario's X speed is multiplied by this
-BACKWARD_PUNISHMENT_COEF = 0
+BACKWARD_PUNISHMENT_COEF = 0.25
 MUSHROOM_REWARD = 15  # 1000 score
 # TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 15  # 1000 score
@@ -95,6 +95,7 @@ MIN_RANDOM_TIME = 60
 HEART_FARM_X_POS_MULTIPLE = 15
 
 # Cell selection settings
+START_LEVEL = "1-1"
 MAX_START_LEVEL = "1-1"
 X_POS_MULTIPLE = 150
 Y_POS_MULTIPLE = 30

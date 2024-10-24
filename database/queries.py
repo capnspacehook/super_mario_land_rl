@@ -59,10 +59,9 @@ class GetCellRow:
 
 
 GET_FIRST_CELL = """-- name: get_first_cell \\:one
-SELECT c.id, action, max_no_ops, initial, state
-FROM cells AS c
-CROSS JOIN max_sections AS m
-WHERE c.section = m.section AND initial = TRUE
+SELECT id, action, max_no_ops, initial, state
+FROM cells
+WHERE section = :p1 AND initial = TRUE
 LIMIT 1
 """
 
@@ -242,8 +241,8 @@ class Querier:
             state=row[4],
         )
 
-    def get_first_cell(self) -> Optional[GetFirstCellRow]:
-        row = self._conn.execute(sqlalchemy.text(GET_FIRST_CELL)).first()
+    def get_first_cell(self, *, section: str) -> Optional[GetFirstCellRow]:
+        row = self._conn.execute(sqlalchemy.text(GET_FIRST_CELL), {"p1": section}).first()
         if row is None:
             return None
         return GetFirstCellRow(

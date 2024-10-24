@@ -2,6 +2,7 @@ from typing import Tuple
 from gymnasium import spaces
 
 from pufferlib.emulation import GymnasiumPufferEnv
+from pufferlib.models import LSTMWrapper
 from pufferlib.pytorch import layer_init, nativize_dtype, nativize_tensor
 import torch as th
 from torch import nn
@@ -9,6 +10,11 @@ from torch import nn
 from super_mario_land.constants import *
 from super_mario_land.game_area import MAX_TILE
 from super_mario_land.settings import *
+
+
+class Recurrent(LSTMWrapper):
+    def __init__(self, env, policy, input_size=1, hidden_size=256, num_layers=1):
+        super().__init__(env, policy, input_size, hidden_size, num_layers)
 
 
 class Policy(nn.Module):

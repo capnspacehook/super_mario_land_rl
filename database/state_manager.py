@@ -87,10 +87,10 @@ class StateManager(object):
                 result = q.get_first_cell()
             return result.id, result.action, result.max_no_ops, result.initial, result.state
 
-    def get_first_cell(self) -> Tuple[int, int, int, bool, memoryview]:
+    def get_first_cell(self, section: str) -> Tuple[int, int, int, bool, memoryview]:
         with self.engine.connect() as conn:
             q = Querier(conn)
-            result = q.get_first_cell()
+            result = q.get_first_cell(section=section)
             return result.id, result.action, result.max_no_ops, result.initial, result.state
 
     def record_score(self, cell_id: int, score: float):

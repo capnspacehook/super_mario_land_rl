@@ -262,7 +262,7 @@ class MarioLandEnv(Env):
 
         # load new cell
         if self.isEval:
-            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell()
+            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell(START_LEVEL)
         else:
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_random_cell()
 
@@ -798,7 +798,7 @@ class MarioLandEnv(Env):
             # load the next level directly to avoid processing
             # unnecessary frames and the AI playing levels we
             # don't want it to
-            stateFile = self.stateFiles[worldToNextLevelState[curState.world] + 1]
+            stateFile = self.stateFiles[worldToNextLevelState[curState.world]]
             with open(stateFile, "rb") as f:
                 state = memoryview(f.read())
                 # keep lives and powerup in new level

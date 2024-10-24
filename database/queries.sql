@@ -98,10 +98,9 @@ FROM cells AS c
 JOIN rand_id AS ri ON ri.id = c.id WHERE c.id = ri.id;
 
 -- name: GetFirstCell :one
-SELECT c.id, action, max_no_ops, initial, state
-FROM cells AS c
-CROSS JOIN max_sections AS m
-WHERE c.section = m.section AND initial = TRUE
+SELECT id, action, max_no_ops, initial, state
+FROM cells
+WHERE section = $1 AND initial = TRUE
 LIMIT 1;
 
 -- name: GetCell :one

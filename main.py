@@ -22,8 +22,9 @@ from rich.traceback import install
 install(show_locals=False)
 
 import clean_pufferl
+from sweep import sweep
 
-from super_mario_land.policy import Policy
+from super_mario_land.policy import Policy, Recurrent
 import super_mario_land.settings
 from register import createSMLEnv
 from wrappers import VecRunningMean
@@ -54,8 +55,7 @@ def make_policy(env, use_rnn):
 
 
 def train(args):
-    args.wandb = None
-    if args.track:
+    if args.track and args.mode != "sweep":
         args.wandb = init_wandb(args, args.wandb_name, id=args.train.exp_id)
         args.train.__dict__.update(dict(args.wandb.config.train))
     if args.vec.backend == "serial":
@@ -73,6 +73,7 @@ def train(args):
         backend=pufferlib.vector.Serial,
         num_envs=1,
     )
+    evalInfos = []
 
     vecenv = pufferlib.vector.make(
         createSMLEnv,
@@ -103,16 +104,20 @@ def train(args):
             stepsTaken = data.global_step - totalSteps
             totalSteps = data.global_step
             if totalSteps + stepsTaken >= nextEvalAt:
-                eval_policy(data, evalVecenv)
+                info = eval_policy(data, evalVecenv)
+                evalInfos.append(info)
                 nextEvalAt += args.train.eval_interval
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
         clean_pufferl.close(data)
-        os._exit(0)
-    except Exception:
+        raise e
+    except Exception as e:
         Console().print_exception()
-        os._exit(0)
+        clean_pufferl.close(data)
+        raise e
 
     clean_pufferl.close(data)
+
+    return evalInfos
 
 
 def init_wandb(args, name, id=None, resume=True):
@@ -127,7 +132,6 @@ def init_wandb(args, name, id=None, resume=True):
             "env": get_constants(super_mario_land.settings),
         },
         name=name,
-        monitor_gym=True,
         save_code=True,
         resume=resume,
     )
@@ -160,6 +164,8 @@ def eval_policy(data, env: pufferlib.vector.Serial):
         if done or trunc:
             break
 
+    info = info[-1]
+
     if data.wandb is not None:
         data.wandb.log(
             {
@@ -167,9 +173,14 @@ def eval_policy(data, env: pufferlib.vector.Serial):
                 "eval/reward": totalReward,
                 "eval/length": steps,
                 "eval/recording": wandb.Video("/tmp/eval.mp4"),
-                **{f"eval/{k}": v for k, v in info[-1].items()},
+                **{f"eval/{k}": v for k, v in info.items()},
             }
         )
+
+    info["reward"] = totalReward
+    info["length"] = steps
+
+    return info
 
 
 if __name__ == "__main__":
@@ -183,8 +194,9 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="train",
-        choices="train eval evaluate playtest autotune".split(),
+        choices="train eval evaluate playtest autotune sweep".split(),
     )
+    parser.add_argument("--sweep-child", action="store_true")
     parser.add_argument("--use-rnn", action="store_true")
     parser.add_argument("--eval-model-path", type=str, default=None, help="Path to model to evaluate")
     parser.add_argument("--render", action="store_true", help="Enable rendering")
@@ -192,9 +204,11 @@ if __name__ == "__main__":
     parser.add_argument("--wandb-project", type=str, default="Super Mario Land", help="WandB project")
     parser.add_argument("--wandb-group", type=str, default="", help="WandB group")
     parser.add_argument("--wandb-name", type=str, default="", help="WandB run name")
+    parser.add_argument("--wandb-sweep", type=str, default="", help="Wandb sweep ID")
     parser.add_argument("--track", action="store_true", help="Track on WandB")
 
     # Train configuration
+    parser.add_argument("--train.data-dir", type=str, default="checkpoints")
     parser.add_argument("--train.exp-id", type=str, default=None)
     parser.add_argument("--train.seed", type=int, default=-1)
     parser.add_argument("--train.torch-deterministic", action="store_true")
@@ -208,7 +222,7 @@ if __name__ == "__main__":
     parser.add_argument("--train.update-epochs", type=int, default=5)
     parser.add_argument("--train.norm-adv", action="store_false")
     parser.add_argument("--train.clip-coef", type=float, default=0.2)
-    parser.add_argument("--train.clip-vloss", action="store_true")
+    parser.add_argument("--train.clip-vloss", action="store_false")
     parser.add_argument("--train.ent-coef", type=float, default=7e-03)
     parser.add_argument("--train.vf-coef", type=float, default=0.5)
     parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)
@@ -247,7 +261,14 @@ if __name__ == "__main__":
     args = pufferlib.namespace(**args)
 
     if args.mode == "train":
-        train(args)
+        try:
+            args.wandb = None
+            train(args)
+            if args.track:
+                wandb.finish()
+        except Exception:
+            Console().print_exception()
+            os._exit(0)
     elif args.mode in ("eval", "evaluate"):
         try:
             clean_pufferl.rollout(
@@ -271,6 +292,7 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             env.close()
             os._exit(0)
-
     elif args.mode == "autotune":
         pufferlib.vector.autotune(createSMLEnv, batch_size=args.vec.env_batch_size)
+    elif args.mode == "sweep":
+        sweep(args, train)

@@ -1,6 +1,7 @@
 from pdb import set_trace as T
 import numpy as np
 
+import gc
 import os
 import random
 import psutil
@@ -18,6 +19,8 @@ import torch
 import pufferlib
 import pufferlib.utils
 import pufferlib.pytorch
+
+import wandb
 
 torch.set_float32_matmul_precision("high")
 
@@ -295,16 +298,22 @@ def train(data):
 
 
 def close(data):
-    data.vecenv.close()
-    data.utilization.stop()
-    config = data.config
-    if data.wandb is not None:
-        artifact_name = f"{config.exp_id}_model"
-        artifact = data.wandb.Artifact(artifact_name, type="model")
-        model_path = save_checkpoint(data)
-        artifact.add_file(model_path)
-        data.wandb.run.log_artifact(artifact)
-        data.wandb.finish()
+    try:
+        data.vecenv.close()
+        data.utilization.stop()
+        config = data.config
+        if data.wandb is not None:
+            artifact_name = f"{config.exp_id}_model"
+            artifact = data.wandb.Artifact(artifact_name, type="model")
+            model_path = save_checkpoint(data)
+            artifact.add_file(model_path)
+            data.wandb.run.log_artifact(artifact)
+    except Exception:
+        Console().print_exception()
+
+    del data
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 class Profile:
@@ -534,7 +543,7 @@ class Utilization(Thread):
 
 def save_checkpoint(data):
     config = data.config
-    path = os.path.join(config.data_dir, config.exp_id)
+    path = os.path.join(config.data_dir, wandb.run.id)
     if not os.path.exists(path):
         os.makedirs(path)
 

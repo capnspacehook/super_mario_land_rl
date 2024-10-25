@@ -1,9 +1,10 @@
 from typing import Any, Callable, List
 
 import numpy as np
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 from PIL import ImageFont
 from PIL import ImageDraw
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
+import psutil
 from pyboy.utils import WindowEvent
 
 
@@ -29,6 +30,8 @@ class Recorder:
         rec_steps: int = 2,
         reward_steps: int = 4,
     ):
+        self._cores = psutil.cpu_count(logical=True)
+
         self.actions = actions
         self.episode_num = episode_num
         self.native_fps = native_fps
@@ -75,7 +78,7 @@ class Recorder:
             codec="libx264",
             bitrate="4000k",
             preset="slow",
-            threads=24,
+            threads=self._cores,
             logger=None,
         )
         v.close()

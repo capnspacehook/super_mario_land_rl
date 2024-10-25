@@ -17,11 +17,7 @@ from sqlalchemy import create_engine
 
 from super_mario_land.constants import *
 from super_mario_land.game_area import bouncing_boulder_tiles, worldTilesets
-from super_mario_land.observation import (
-    combineObservations,
-    getObservations,
-    getStackedObservation,
-)
+from super_mario_land.observation import getObservation
 from super_mario_land.ram import *
 from super_mario_land.settings import *
 from database.state_manager import StateManager
@@ -83,13 +79,6 @@ class MarioLandEnv(Env):
         self.onGroundFor = 0
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
-        self.observationCaches = [
-            deque(maxlen=N_GAME_AREA_STACK),  # game area
-            deque(maxlen=N_MARIO_OBS_STACK),  # mario features
-            deque(maxlen=N_ENTITY_OBS_STACK),  # entity IDs
-            deque(maxlen=N_ENTITY_OBS_STACK),  # entity features
-            deque(maxlen=N_SCALAR_OBS_STACK),  # scalar features
-        ]
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
 
@@ -135,26 +124,22 @@ class MarioLandEnv(Env):
 
         self.action_space = spaces.Discrete(len(self.actions))
 
-        obsSpace = {
-            GAME_AREA_OBS: spaces.Box(
-                low=0,
-                high=MAX_TILE,
-                shape=(N_GAME_AREA_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH),
-                dtype=np.uint8,
-            ),
-            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_SCALAR_OBS_STACK, SCALAR_SIZE), dtype=np.float32),
-        }
-        if USE_MARIO_ENTITY_OBS:
-            obsSpace[MARIO_INFO_OBS] = (
-                spaces.Box(low=0, high=1, shape=(N_MARIO_OBS_STACK, MARIO_INFO_SIZE), dtype=np.float32),
-            )
-            obsSpace[ENTITY_ID_OBS] = (
-                spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_ENTITY_OBS_STACK, N_ENTITIES), dtype=np.uint8),
-            )
-            obsSpace[ENTITY_INFO_OBS] = spaces.Box(
-                low=0, high=1, shape=(N_ENTITY_OBS_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
-            )
-        self.observation_space = spaces.Dict(obsSpace)
+        self.observation_space = spaces.Dict(
+            {
+                GAME_AREA_OBS: spaces.Box(
+                    low=0,
+                    high=MAX_TILE,
+                    shape=(GAME_AREA_HEIGHT, GAME_AREA_WIDTH),
+                    dtype=np.uint8,
+                ),
+                MARIO_INFO_OBS: spaces.Box(low=0, high=1, shape=(MARIO_INFO_SIZE,), dtype=np.float32),
+                ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_ENTITIES,), dtype=np.uint8),
+                ENTITY_INFO_OBS: spaces.Box(
+                    low=0, high=1, shape=(N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
+                ),
+                SCALAR_OBS: spaces.Box(low=0, high=1, shape=(SCALAR_SIZE,), dtype=np.float32),
+            }
+        )
 
     def _initButtons(self):
         # build list of possible inputs
@@ -239,7 +224,7 @@ class MarioLandEnv(Env):
 
         # not calling self.getObservation is fine here as self._reset will
         # fill self.observationCaches with the current observation
-        return combineObservations(self.observationCaches), {}
+        return self.getObservation(), {}
 
     def _reset(self, options: dict[str, Any]) -> Tuple[MarioLandGameState, int]:
         # delete old cell score entries so querying the DB doesn't
@@ -448,22 +433,12 @@ class MarioLandEnv(Env):
         if resetCaches:
             [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
 
-        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(self.pyboy, self.gameStateCache)
-
-        if resetCaches:
-            # reset the observation cache
-            [self.observationCaches[0].append(gameArea) for _ in range(N_GAME_AREA_STACK)]
-            if USE_MARIO_ENTITY_OBS:
-                [self.observationCaches[1].append(marioInfo) for _ in range(N_MARIO_OBS_STACK)]
-                [self.observationCaches[2].append(entityID) for _ in range(N_ENTITY_OBS_STACK)]
-                [self.observationCaches[3].append(entityInfo) for _ in range(N_ENTITY_OBS_STACK)]
-            [self.observationCaches[4].append(scalar) for _ in range(N_SCALAR_OBS_STACK)]
-        else:
+        if not resetCaches:
             curState.posReset = True
             self.gameStateCache.append(curState)
 
     def getObservation(self) -> Any:
-        return getStackedObservation(self.pyboy, self.observationCaches, self.gameStateCache)
+        return getObservation(self.pyboy, self.gameStateCache)
 
     def step(self, actionIdx: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         # send actions

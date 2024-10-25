@@ -145,13 +145,13 @@ def eval_policy(data, env: pufferlib.vector.Serial):
     steps = 0
     totalReward = 0.0
 
+    state = None
     ob, _ = env.reset()
     while True:
         with th.no_grad():
             ob = th.from_numpy(ob).to(device)
             if hasattr(policy, "lstm"):
-                # TODO: make this work deterministically
-                action, _, _, _, state = policy(ob, state)
+                action, _, state = policy.policy(ob, state)
             else:
                 action, _ = policy.policy(ob)
 
@@ -197,7 +197,7 @@ if __name__ == "__main__":
         choices="train eval evaluate playtest autotune sweep".split(),
     )
     parser.add_argument("--sweep-child", action="store_true")
-    parser.add_argument("--use-rnn", action="store_true")
+    parser.add_argument("--use-rnn", action="store_false")
     parser.add_argument("--eval-model-path", type=str, default=None, help="Path to model to evaluate")
     parser.add_argument("--render", action="store_true", help="Enable rendering")
     parser.add_argument("--wandb-entity", type=str, default="capnspacehook", help="WandB entity")
@@ -215,26 +215,27 @@ if __name__ == "__main__":
     parser.add_argument("--train.cpu-offload", action="store_true")
     parser.add_argument("--train.device", type=str, default="cuda" if th.cuda.is_available() else "cpu")
     parser.add_argument("--train.total-timesteps", type=int, default=100_000_000)
-    parser.add_argument("--train.learning-rate", type=float, default=3e-05)
-    parser.add_argument("--train.anneal-lr", action="store_true")
-    parser.add_argument("--train.gamma", type=float, default=0.995)
-    parser.add_argument("--train.gae-lambda", type=float, default=0.98)
-    parser.add_argument("--train.update-epochs", type=int, default=5)
-    parser.add_argument("--train.norm-adv", action="store_false")
-    parser.add_argument("--train.clip-coef", type=float, default=0.2)
-    parser.add_argument("--train.clip-vloss", action="store_false")
-    parser.add_argument("--train.ent-coef", type=float, default=7e-03)
-    parser.add_argument("--train.vf-coef", type=float, default=0.5)
-    parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)
-    parser.add_argument("--train.max-grad-norm", type=float, default=1)
-    parser.add_argument("--train.target-kl", type=float, default=None)
-    parser.add_argument("--train.batch-size", type=int, default=98304)
-    parser.add_argument("--train.minibatch-size", type=int, default=512)
-    parser.add_argument("--train.bptt-horizon", type=int, default=16)
     parser.add_argument("--train.checkpoint-interval", type=int, default=0)
-    parser.add_argument("--train.eval-interval", type=int, default=1_000_000)
+    parser.add_argument("--train.eval-interval", type=int, default=2_000_000)
     parser.add_argument("--train.compile", action="store_true")
     parser.add_argument("--train.compile-mode", type=str, default="reduce-overhead")
+
+    parser.add_argument("--train.batch-size", type=int, default=65_536)
+    parser.add_argument("--train.bptt-horizon", type=int, default=16)
+    parser.add_argument("--train.clip-coef", type=float, default=0.2)
+    parser.add_argument("--train.clip-vloss", action="store_false")
+    parser.add_argument("--train.ent-coef", type=float, default=0.01)
+    parser.add_argument("--train.gae-lambda", type=float, default=0.9493585556411764)
+    parser.add_argument("--train.gamma", type=float, default=0.9979288364124188)
+    parser.add_argument("--train.learning-rate", type=float, default=0.00007)
+    parser.add_argument("--train.anneal-lr", action="store_true")
+    parser.add_argument("--train.max-grad-norm", type=float, default=1.2139850854873655)
+    parser.add_argument("--train.minibatch-size", type=int, default=16_384)
+    parser.add_argument("--train.norm-adv", action="store_false")
+    parser.add_argument("--train.update-epochs", type=int, default=3)
+    parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)
+    parser.add_argument("--train.vf-coef", type=float, default=0.3197591777413355)
+    parser.add_argument("--train.target-kl", type=float, default=None)
 
     parser.add_argument(
         "--vec.backend", type=str, default="multiprocessing", choices="serial multiprocessing ray".split()
@@ -266,6 +267,8 @@ if __name__ == "__main__":
             train(args)
             if args.track:
                 wandb.finish()
+        except KeyboardInterrupt:
+            os._exit(0)
         except Exception:
             Console().print_exception()
             os._exit(0)

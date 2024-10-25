@@ -11,58 +11,23 @@ from super_mario_land.ram import MarioLandGameState, MarioLandObject
 from super_mario_land.settings import *
 
 
-def getStackedObservation(
+def getObservation(
     pyboy: PyBoy,
-    obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
     states: Deque[MarioLandGameState],
 ) -> Dict[str, Any]:
-    gameArea, marioInfo, entityIDs, entityInfos, scalar = getObservations(pyboy, states)
-
-    obsCache[0].append(gameArea)
-    if USE_MARIO_ENTITY_OBS:
-        obsCache[1].append(marioInfo)
-        obsCache[2].append(entityIDs)
-        obsCache[3].append(entityInfos)
-    obsCache[4].append(scalar)
-
-    return combineObservations(obsCache)
-
-
-def getObservations(
-    pyboy: PyBoy,
-    states: Deque[MarioLandGameState],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     gameArea = getGameArea(pyboy, states[-1])
-
-    marioInfo = None
-    entityIDs = None
-    entityInfos = None
-    if USE_MARIO_ENTITY_OBS:
-        marioInfo, entityIDs, entityInfos = getEntityIDsAndInfo(states)
-
+    marioInfo, entityIDs, entityInfos = getEntityIDsAndInfo(states)
     scalar = getScalarFeatures(states[-1])
-    return gameArea, marioInfo, entityIDs, entityInfos, scalar
 
-
-def combineObservations(
-    obsCache: Tuple[
-        Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]
-    ],
-) -> Dict[str, Any]:
-    obs = {
-        GAME_AREA_OBS: np.squeeze(np.array(obsCache[0])),
-        SCALAR_OBS: np.squeeze(np.array(obsCache[4])),
+    return {
+        GAME_AREA_OBS: gameArea,
+        MARIO_INFO_OBS: marioInfo,
+        ENTITY_ID_OBS: entityIDs,
+        ENTITY_INFO_OBS: entityInfos,
+        SCALAR_OBS: scalar,
     }
-    if USE_MARIO_ENTITY_OBS:
-        obs[MARIO_INFO_OBS] = np.squeeze(np.array(obsCache[1]))
-        obs[ENTITY_ID_OBS] = np.squeeze(np.array(obsCache[2]))
-        obs[ENTITY_INFO_OBS] = np.squeeze(np.array(obsCache[3]))
-
-    return obs
 
 
-# numpy operations in this function cause compilations errors for some reason
-@torch._dynamo.disable
 def getEntityIDsAndInfo(
     states: Deque[MarioLandGameState],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

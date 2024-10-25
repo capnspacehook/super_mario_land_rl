@@ -10,21 +10,16 @@ from super_mario_land.ram import (
 FRAME_SKIP = 4
 
 # Observation settings
-N_GAME_AREA_STACK = 12  # number of game area observations to stack
-N_MARIO_OBS_STACK = 12  # number of mario observations to stack
-N_ENTITY_OBS_STACK = 12  # number of entity observations to stack
-N_SCALAR_OBS_STACK = 2  # number of scalar observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Policy settings
 ACTIVATION_FN = nn.ReLU
 GAME_AREA_EMBEDDING_DIM = 4
-USE_MARIO_ENTITY_OBS = False
-MARIO_HIDDEN_UNITS = 64
+FEATURES_FC_HIDDEN_UNITS = 512
 ENTITY_EMBEDDING_DIM = 4
-ENTITY_HIDDEN_UNITS = 64
-ACTOR_HIDDEN_UNITS = 2048
-CRITIC_HIDDEN_UNITS = 2048
+LSTM_HIDDEN_UNITS = 1024
+ACTOR_HIDDEN_UNITS = 1024
+CRITIC_HIDDEN_UNITS = 1024
 
 # Time settings
 MIN_TIME = 10
@@ -39,7 +34,6 @@ DEATH_TIME_LOSS = 10
 # Reward values
 # punishment for loosing powerup
 HIT_PUNISHMENT = -10
-DEATH_SCALE = -10
 DEATH_PUNISHMENT = -30
 GAME_OVER_PUNISHMENT = -50
 # added every step to encourage finishing levels faster

@@ -5,6 +5,8 @@ import subprocess
 import sys
 import time
 
+from rich.console import Console
+
 from carbs import CARBS, CARBSParams, LinearSpace, LogitSpace, LogSpace, Param
 import wandb
 from wandb_carbs import WandbCarbs, create_sweep
@@ -14,29 +16,32 @@ def sweep(args, train):
     params = [
         Param(
             name="total_timesteps",
-            space=LinearSpace(min=10_000_000, max=50_000_000, scale=10_000_000, is_integer=True),
-            search_center=20_000_000,
+            space=LinearSpace(min=20_000_000, max=100_000_000, scale=30_000_000, is_integer=True),
+            search_center=30_000_000,
         ),
-        Param(name="learning_rate", space=LogSpace(min=1e-5, max=1e-1), search_center=3e-05),
-        Param(name="gamma", space=LogitSpace(min=0.8, max=0.9999), search_center=0.995),
-        Param(name="gae_lambda", space=LogitSpace(min=0.8, max=1.0), search_center=0.98),
-        Param(
-            name="update_epochs", space=LinearSpace(min=1, max=15, scale=5, is_integer=True), search_center=5
-        ),
-        Param(name="clip_coef", space=LogitSpace(min=0.1, max=0.4), search_center=0.2),
-        Param(name="ent-coef", space=LogSpace(min=1e-5, max=1e-1), search_center=7e-03),
-        Param(name="vf_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.5),
-        Param(name="vf_clip_coef", space=LogitSpace(min=0.1, max=0.4), search_center=0.1),
-        Param(name="max_grad_norm", space=LinearSpace(min=0, max=5), search_center=1),
         Param(
             name="batch_size",
-            space=LinearSpace(min=65_536, max=1_048_576, scale=270_000, is_integer=True),
-            search_center=98_304,
+            space=LinearSpace(min=15, max=20, scale=5, is_integer=True),
+            search_center=17,
         ),
         Param(
             name="minibatch_size",
-            space=LinearSpace(min=128, max=65_536, scale=20_000, is_integer=True),
-            search_center=512,
+            space=LinearSpace(min=2, max=32, scale=16, is_integer=True),
+            search_center=4,
+        ),
+        Param(
+            name="update_epochs", space=LinearSpace(min=1, max=10, scale=5, is_integer=True), search_center=5
+        ),
+        Param(name="learning_rate", space=LogSpace(min=1e-5, max=1e-1), search_center=0.0001),
+        Param(name="gamma", space=LogitSpace(min=0.9, max=0.9999), search_center=0.995),
+        Param(name="gae_lambda", space=LogitSpace(min=0.8, max=1.0), search_center=0.98),
+        Param(name="ent_coef", space=LogSpace(min=1e-5, max=1e-1), search_center=0.0075),
+        Param(name="vf_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.3),
+        Param(name="max_grad_norm", space=LinearSpace(min=0, max=5), search_center=1),
+        Param(
+            name="bptt_horizon",
+            space=LinearSpace(min=8, max=64, scale=32, is_integer=True),
+            search_center=16,
         ),
     ]
 
@@ -50,7 +55,10 @@ def sweep(args, train):
         )
 
     if args.sweep_child:
-        trainWithSuggestion(args, params, train)
+        try:
+            trainWithSuggestion(args, params, train)
+        except Exception:
+            Console().print_exception()
         os._exit(0)
 
     def launchTrainingProcess():
@@ -71,7 +79,7 @@ def trainWithSuggestion(args, params, train):
 
     config = CARBSParams(
         better_direction_sign=1,
-        max_suggestion_cost=10800,  # 3h
+        max_suggestion_cost=21600,  # 6h
         num_random_samples=len(params),
         is_wandb_logging_enabled=False,
     )
@@ -96,21 +104,19 @@ def trainWithSuggestion(args, params, train):
     del suggestion["suggestion_uuid"]
     args.train.__dict__.update(dict(suggestion))
 
-    args.train.batch_size = closest_power(args.train.batch_size)
+    args.train.batch_size = 2**args.train.batch_size
     args.train.minibatch_size = closest_power(args.train.minibatch_size)
-    wandb.run.config.update(
-        dict(
-            batch_size=args.train.batch_size,
-            minibatch_size=args.train.minibatch_size,
-        ),
-        allow_val_change=True,
-    )
+    args.train.minibatch_size = args.train.batch_size // args.train.minibatch_size
+    args.train.bptt_horizon = closest_power(args.train.bptt_horizon)
+    wandb.run.config.update(dict(args.train), allow_val_change=True)
+
     print(f"Training args: {wandb.run.config}")
 
     startTime = time.time()
     try:
         evalInfos = train(args)
     except Exception:
+        Console.print_exception()
         wandbCarbs.record_failure()
         wandb.finish()
         return

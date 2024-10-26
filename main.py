@@ -229,7 +229,7 @@ if __name__ == "__main__":
     parser.add_argument("--train.update-epochs", type=int, default=6)
     parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)
     parser.add_argument("--train.vf-coef", type=float, default=0.3197591777413355)
-    parser.add_argument("--train.target-kl", type=float, default=0.3)
+    parser.add_argument("--train.target-kl", type=float, default=0.2)
 
     parser.add_argument(
         "--vec.backend", type=str, default="multiprocessing", choices="serial multiprocessing ray".split()

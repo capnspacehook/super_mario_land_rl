@@ -22,9 +22,11 @@ def createSMLEnv(
         debug = True
         logLvl = "INFO"
 
+    shouldRender = render or isPlaytest or isInteractiveEval
+
     pyboy = PyBoy(
         str(rom),
-        window="SDL2" if render else "null",
+        window="SDL2" if shouldRender else "null",
         scale=4,
         debug=debug,
         log_level=logLvl,

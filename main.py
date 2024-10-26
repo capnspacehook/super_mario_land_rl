@@ -87,9 +87,6 @@ def train(args):
     vecenv = VecRunningMean(vecenv, gamma=args.train.gamma)
     policy = make_policy(vecenv.driver_env, args.use_rnn).to(args.train.device)
 
-    if args.train.seed == -1:
-        args.train.seed = np.random.randint(2**32 - 1, dtype="int64").item()
-
     args.train.env = "sml"
     data = clean_pufferl.create(args.train, vecenv, policy, wandb=args.wandb)
 
@@ -104,7 +101,7 @@ def train(args):
             stepsTaken = data.global_step - totalSteps
             totalSteps = data.global_step
             if totalSteps + stepsTaken >= nextEvalAt:
-                info = eval_policy(data, evalVecenv)
+                info = eval_policy(evalVecenv, data.policy, data.config.device, data)
                 evalInfos.append(info)
                 nextEvalAt += args.train.eval_interval
     except KeyboardInterrupt as e:
@@ -138,10 +135,7 @@ def init_wandb(args, name, id=None, resume=True):
     return wandb
 
 
-def eval_policy(data, env: pufferlib.vector.Serial):
-    policy = data.policy
-    device = data.config.device
-
+def eval_policy(env: pufferlib.vector.Serial, policy, device, data=None):
     steps = 0
     totalReward = 0.0
 
@@ -166,7 +160,7 @@ def eval_policy(data, env: pufferlib.vector.Serial):
 
     info = info[-1]
 
-    if data.wandb is not None:
+    if data is not None and data.wandb is not None:
         data.wandb.log(
             {
                 "overview/agent_steps": data.global_step,
@@ -216,26 +210,26 @@ if __name__ == "__main__":
     parser.add_argument("--train.device", type=str, default="cuda" if th.cuda.is_available() else "cpu")
     parser.add_argument("--train.total-timesteps", type=int, default=100_000_000)
     parser.add_argument("--train.checkpoint-interval", type=int, default=0)
-    parser.add_argument("--train.eval-interval", type=int, default=2_000_000)
+    parser.add_argument("--train.eval-interval", type=int, default=1_000_000)
     parser.add_argument("--train.compile", action="store_true")
     parser.add_argument("--train.compile-mode", type=str, default="reduce-overhead")
 
-    parser.add_argument("--train.batch-size", type=int, default=65_536)
+    parser.add_argument("--train.batch-size", type=int, default=131_072)
     parser.add_argument("--train.bptt-horizon", type=int, default=16)
     parser.add_argument("--train.clip-coef", type=float, default=0.2)
     parser.add_argument("--train.clip-vloss", action="store_false")
-    parser.add_argument("--train.ent-coef", type=float, default=0.01)
+    parser.add_argument("--train.ent-coef", type=float, default=0.0075)
     parser.add_argument("--train.gae-lambda", type=float, default=0.9493585556411764)
     parser.add_argument("--train.gamma", type=float, default=0.9979288364124188)
-    parser.add_argument("--train.learning-rate", type=float, default=0.00007)
+    parser.add_argument("--train.learning-rate", type=float, default=0.0001)
     parser.add_argument("--train.anneal-lr", action="store_true")
     parser.add_argument("--train.max-grad-norm", type=float, default=1.2139850854873655)
-    parser.add_argument("--train.minibatch-size", type=int, default=16_384)
+    parser.add_argument("--train.minibatch-size", type=int, default=32_768)
     parser.add_argument("--train.norm-adv", action="store_false")
-    parser.add_argument("--train.update-epochs", type=int, default=3)
+    parser.add_argument("--train.update-epochs", type=int, default=6)
     parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)
     parser.add_argument("--train.vf-coef", type=float, default=0.3197591777413355)
-    parser.add_argument("--train.target-kl", type=float, default=None)
+    parser.add_argument("--train.target-kl", type=float, default=0.3)
 
     parser.add_argument(
         "--vec.backend", type=str, default="multiprocessing", choices="serial multiprocessing ray".split()
@@ -261,6 +255,9 @@ if __name__ == "__main__":
     args["vec"] = pufferlib.namespace(**args["vec"])
     args = pufferlib.namespace(**args)
 
+    if args.train.seed == -1:
+        args.train.seed = np.random.randint(2**32 - 1, dtype="int64").item()
+
     if args.mode == "train":
         try:
             args.wandb = None
@@ -274,14 +271,15 @@ if __name__ == "__main__":
             os._exit(0)
     elif args.mode in ("eval", "evaluate"):
         try:
-            clean_pufferl.rollout(
-                createSMLEnv,
-                env_kwargs={},
-                agent_creator=make_policy,
-                agent_kwargs={"use_rnn": args.use_rnn},
-                model_path=args.eval_model_path,
-                device=args.train.device,
-            )
+            env = pufferlib.vector.make(createSMLEnv, env_kwargs=dict(isEval=True, isInteractiveEval=True))
+
+            if args.eval_model_path is None:
+                policy = make_policy(env, args.use_rnn).to(args.train.device)
+            else:
+                policy = th.load(args.eval_model_path, map_location=args.train.device)
+
+            info = eval_policy(env, policy, args.train.device)
+            print(info)
         except KeyboardInterrupt:
             os._exit(0)
     elif args.mode == "playtest":

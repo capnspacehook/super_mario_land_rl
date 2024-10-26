@@ -57,15 +57,11 @@ class Policy(nn.Module):
         self.actor = nn.Sequential(
             layer_init(nn.Linear(LSTM_HIDDEN_UNITS, ACTOR_HIDDEN_UNITS), std=0.01),
             activationFn(),
-            layer_init(nn.Linear(ACTOR_HIDDEN_UNITS, ACTOR_HIDDEN_UNITS), std=0.01),
-            activationFn(),
             layer_init(nn.Linear(ACTOR_HIDDEN_UNITS, self.nActions), std=0.01),
             activationFn(),
         )
         self.critic = nn.Sequential(
             layer_init(nn.Linear(LSTM_HIDDEN_UNITS, CRITIC_HIDDEN_UNITS), std=1),
-            activationFn(),
-            layer_init(nn.Linear(CRITIC_HIDDEN_UNITS, CRITIC_HIDDEN_UNITS), std=1),
             activationFn(),
             layer_init(nn.Linear(CRITIC_HIDDEN_UNITS, 1), std=1),
             activationFn(),
@@ -77,7 +73,6 @@ class Policy(nn.Module):
         return actions, value
 
     def encode_observations(self, obs: th.Tensor) -> th.Tensor:
-        obs = obs.type(th.uint8)  # Undo bad cleanrl cast
         obs = nativize_tensor(obs, self.dtype)
 
         gameArea = obs[GAME_AREA_OBS].to(th.int)

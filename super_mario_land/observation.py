@@ -3,7 +3,6 @@ from typing import Any, Deque, Dict, List, Tuple
 
 import numpy as np
 from pyboy import PyBoy
-import torch
 
 from super_mario_land.constants import *
 from super_mario_land.game_area import getGameArea

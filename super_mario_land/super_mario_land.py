@@ -3,7 +3,7 @@ import hashlib
 from math import floor
 from io import BytesIO
 from typing import Any, Deque, Dict, List, Tuple, Tuple
-from os import listdir
+from os import listdir, stat
 from os.path import isfile, join
 import random
 from pathlib import Path
@@ -53,7 +53,11 @@ class MarioLandEnv(Env):
         self.isPlaytest = isPlaytest
         self.isInteractiveEval = isInteractiveEval
         self.shouldRender = render or self.isEval or self.isPlaytest or self.isInteractiveEval
+        self.shouldRecord = self.isEval and not self.isInteractiveEval
         self.interactive = False
+
+        if self.isInteractiveEval:
+            self.pyboy.set_emulation_speed(1)
 
         self.isEval = isEval
         self.maxLevel = MAX_START_LEVEL
@@ -174,7 +178,7 @@ class MarioLandEnv(Env):
         self.stateManager = StateManager(engine)
 
         # only setup DB in the eval env so it's done once
-        if not self.isEval:
+        if not self.isEval or self.isInteractiveEval:
             return
 
         # create tables and indexes if they don't exist already
@@ -283,8 +287,8 @@ class MarioLandEnv(Env):
         with BytesIO(state) as bs:
             self.pyboy.load_state(bs)
 
-        livesLeft = 2
-        coins = 0
+        livesLeft = DEFAULT_LIVES_LEFT
+        coins = DEFAULT_COINS
         score = 0
 
         if transferState:
@@ -337,6 +341,10 @@ class MarioLandEnv(Env):
                     curState.isInvincible = True
                 self._handlePowerup(curState)
         else:
+            if DEFAULT_POWERUP != STATUS_SMALL:
+                self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
+            if DEFAULT_POWERUP == STATUS_FIRE:
+                self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL] = 1
             curState = self.gameState()
 
         # set lives left
@@ -443,9 +451,9 @@ class MarioLandEnv(Env):
     def step(self, actionIdx: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         # send actions
         actions = self.actions[actionIdx]
-        if self.isInteractiveEval:
+        if self.isInteractiveEval and Path("agent_enabled.txt").is_file():
             with open("agent_enabled.txt", "r") as f:
-                if "true" in f.read():
+                if "t" in f.read():
                     self.interactive = False
                     self.sendInputs(actions)
                 elif not self.interactive:
@@ -473,7 +481,7 @@ class MarioLandEnv(Env):
             reward = self.reward(curState)
             totalReward += reward
 
-            if self.isEval:
+            if self.shouldRecord:
                 self.recorder.recordStep(self.render, actionIdx, reward)
 
             curState = self.handleProgression(curState)
@@ -490,7 +498,7 @@ class MarioLandEnv(Env):
             # compute an observation so it can use the actual previous
             # game state
             if done:
-                if self.isEval:
+                if self.shouldRecord:
                     self.recorder.episodeDone()
                 break
             elif i != FRAME_SKIP - 1:
@@ -823,7 +831,10 @@ class MarioLandEnv(Env):
         return (
             self.heartFarming
             or curState.hasStar  # TODO: remove once star bug has been fixed
-            or (self.isEval and (self.evalStuck == 600 or self.evalNoProgress == 1200))
+            or (
+                (self.isEval and not self.isInteractiveEval)
+                and (self.evalStuck == 600 or self.evalNoProgress == 1200)
+            )
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
             or self.invalidLevel
         )
@@ -968,7 +979,7 @@ class MarioLandEnv(Env):
 
         s = f"""
 Game area:
-{obs[GAME_AREA_OBS][-1]}
+{obs[GAME_AREA_OBS]}
 
 Reward: {reward}
 Episode progress: {self.episodeProgress}

@@ -547,7 +547,7 @@ def save_checkpoint(data):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    model_name = f"model_{data.epoch:06d}.pt"
+    model_name = "model_best.pt"
     model_path = os.path.join(path, model_name)
     torch.save(data.uncompiled_policy, model_path)
 

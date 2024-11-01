@@ -91,63 +91,56 @@ lever = (18, [225])  # Lever for level end
 
 # Enemies
 goomba = (19, [144])
-koopa = (19, [150, 151, 152, 153])
-shell = (20, [154, 155])
-explosion = (21, [157, 158])
-piranha_plant = (22, [146, 147, 148, 149])
-bill_launcher = (23, [135, 136])
-bullet_bill = (19, [249])
-projectiles = (
-    24,
-    [
-        # fireball
-        226,
-        # spitting plant seed
-        227,
-    ],
-)
-flying_moth_arrow = (24, [172, 188])
+koopa = (20, [150, 151, 152, 153])
+shell = (21, [154, 155])
+explosion = (22, [157, 158])
+piranha_plant = (23, [146, 147, 148, 149])
+bill_launcher = (24, [135, 136])
+bullet_bill = (25, [249])
+fireball = (26, [226])
+spitting_plant_seed = (27, [227])
+flying_moth_arrow = (28, [172, 188])
 
 # Level specific enemies
 # TODO: make enemies have unique IDs?
 sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
-moth = (19, sharedEnemy1)
-flying_moth = (19, [192, 193, 194, 195, 208, 209, 210, 211])
+moth = (29, sharedEnemy1)
+flying_moth = (30, [192, 193, 194, 195, 208, 209, 210, 211])
 sharedEnemy2 = [164, 165, 166, 167, 180, 181, 182, 183]
-sphinx = (19, sharedEnemy2)
+sphinx = (31, sharedEnemy2)
 sharedEnemy3 = [192, 193, 208, 209]
-bone_fish = (19, sharedEnemy3)
-seahorse = (19, sharedEnemy2)
+bone_fish = (32, sharedEnemy3)
+seahorse = (33, sharedEnemy2)
 sharedEnemy4 = [196, 197, 198, 199, 212, 213, 214, 215]
-robot = (19, sharedEnemy4)
-fist_rock = (19, sharedEnemy2)
-flying_rock = (19, [171, 187])
-falling_spider = (19, sharedEnemy4)
-jumping_spider = (19, sharedEnemy1)
-zombie = (19, [*sharedEnemy1, 168, 169])
-fire_worm = (19, sharedEnemy2)
-spitting_plant = (19, sharedEnemy3)
+robot = (34, sharedEnemy4)
+fist_rock = (35, sharedEnemy2)
+flying_rock = (36, [171, 187])
+falling_spider = (37, sharedEnemy4)
+jumping_spider = (29, sharedEnemy1)
+zombie = (38, [*sharedEnemy1, 168, 169])
+fire_worm = (31, sharedEnemy2)
+spitting_plant = (39, sharedEnemy3)
 bouncing_boulder_tiles = [194, 195, 210, 211]
-bouncing_boulder = (25, bouncing_boulder_tiles)
+bouncing_boulder = (40, bouncing_boulder_tiles)
 
 # Dead enemies
 deadSharedEnemy1 = [168, 169]
 deadSharedEnemy2 = [184, 185]
 deadSharedEnemy3 = [216, 217]
-dead_moth = (26, deadSharedEnemy1)
-dead_flying_moth = (26, [200, 201])
-dead_sphinx = (26, deadSharedEnemy2)
-dead_robot = (26, deadSharedEnemy3)
-dead_flying_rock = (26, [173])
-dead_fist_rock = (26, deadSharedEnemy2)
-dead_falling_spider = (26, deadSharedEnemy3)
-dead_jumping_spider = (26, deadSharedEnemy1)
-dead_fire_worm = (26, deadSharedEnemy2)
+dead_moth = (41, deadSharedEnemy1)
+dead_flying_moth = (41, [200, 201])
+dead_sphinx = (41, deadSharedEnemy2)
+dead_robot = (41, deadSharedEnemy3)
+dead_flying_rock = (41, [173])
+dead_fist_rock = (41, deadSharedEnemy2)
+dead_falling_spider = (41, deadSharedEnemy3)
+dead_jumping_spider = (41, deadSharedEnemy1)
+dead_fire_worm = (41, deadSharedEnemy2)
 
 # Bosses
-big_sphinx = (27, [171, 187, 198, 199, 202, 203, 204, 205, 206, 214, 215, 218, 219, 220])
-big_sphinx_fire = (28, [196, 197, 212, 213])
-big_fist_rock = (29, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
+big_sphinx = (42, [171, 187, 198, 199, 202, 203, 204, 205, 206, 214, 215, 218, 219, 220])
+big_sphinx_fire = (43, [196, 197, 212, 213])
+big_fist_rock = (44, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
 base_tiles = [
     mario,
@@ -172,7 +165,7 @@ base_tiles = [
     piranha_plant,
     bill_launcher,
     bullet_bill,
-    projectiles,
+    fireball,
 ]
 
 
@@ -243,6 +236,7 @@ worldTilesets = {
             world_4_blocks,
             zombie,
             spitting_plant,
+            spitting_plant_seed,
             fire_worm,
             dead_fire_worm,
         ]
@@ -253,8 +247,8 @@ worldTilesets = {
 def getGameArea(pyboy: PyBoy, curState: MarioLandGameState) -> np.ndarray:
     gameArea = pyboy.game_area()
     gameArea = np.asarray(gameArea, dtype=np.uint8)
-    if curState.isInvincible:
-        _drawMario(pyboy, gameArea)
+    # if curState.isInvincible:
+    #     _drawMario(pyboy, gameArea)
 
     return gameArea
 

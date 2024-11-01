@@ -4,6 +4,7 @@ just want to run on a single environment, this is a simpler option."""
 
 from pdb import set_trace as T
 import argparse
+from math import sqrt
 import os
 
 import numpy as np
@@ -44,17 +45,14 @@ def get_constants(module):
     return constants_dict
 
 
-def make_policy(env, use_rnn):
+def make_policy(env, config):
     """Make the policy for the environment"""
-    policy = Policy(env)
-    if use_rnn:
-        policy = Recurrent(env, policy)
-        return pufferlib.frameworks.cleanrl.RecurrentPolicy(policy)
-    else:
-        return pufferlib.frameworks.cleanrl.Policy(policy)
+    policy = Policy(env, config)
+    policy = Recurrent(env, policy, config)
+    return pufferlib.frameworks.cleanrl.RecurrentPolicy(policy)
 
 
-def train(args):
+def train(args, shouldStopEarly=None):
     if args.track and args.mode != "sweep":
         args.wandb = init_wandb(args, args.wandb_name, id=args.train.exp_id)
         args.train.__dict__.update(dict(args.wandb.config.train))
@@ -69,6 +67,7 @@ def train(args):
 
     evalVecenv = pufferlib.vector.make(
         createSMLEnv,
+        env_args=(args.train,),
         env_kwargs=dict(isEval=True),
         backend=pufferlib.vector.Serial,
         num_envs=1,
@@ -78,19 +77,21 @@ def train(args):
     vecenv = pufferlib.vector.make(
         createSMLEnv,
         num_envs=args.vec.num_envs,
+        env_args=(args.train,),
         env_kwargs=dict(render=args.render),
         num_workers=args.vec.num_workers,
         batch_size=args.vec.env_batch_size,
         zero_copy=args.vec.zero_copy,
         backend=backend,
     )
-    vecenv = VecRunningMean(vecenv, gamma=args.train.gamma)
-    policy = make_policy(vecenv.driver_env, args.use_rnn).to(args.train.device)
+    # vecenv = VecRunningMean(vecenv, gamma=args.train.gamma)
+    policy = make_policy(vecenv.driver_env, args.train).to(args.train.device)
 
-    args.train.env = "sml"
     data = clean_pufferl.create(args.train, vecenv, policy, wandb=args.wandb)
 
     try:
+        bestEval = 0.0
+        stopEarly = False
         nextEvalAt = args.train.eval_interval
         totalSteps = 0
 
@@ -101,8 +102,13 @@ def train(args):
             stepsTaken = data.global_step - totalSteps
             totalSteps = data.global_step
             if totalSteps + stepsTaken >= nextEvalAt:
-                info = eval_policy(evalVecenv, data.policy, data.config.device, data)
+                info, bestEval = eval_policy(evalVecenv, data.policy, data.config.device, data, bestEval)
                 evalInfos.append(info)
+
+                if shouldStopEarly is not None and shouldStopEarly(evalInfos, data):
+                    stopEarly = True
+                    break
+
                 nextEvalAt += args.train.eval_interval
     except KeyboardInterrupt as e:
         clean_pufferl.close(data)
@@ -114,7 +120,7 @@ def train(args):
 
     clean_pufferl.close(data)
 
-    return evalInfos
+    return evalInfos, stopEarly
 
 
 def init_wandb(args, name, id=None, resume=True):
@@ -135,7 +141,7 @@ def init_wandb(args, name, id=None, resume=True):
     return wandb
 
 
-def eval_policy(env: pufferlib.vector.Serial, policy, device, data=None):
+def eval_policy(env: pufferlib.vector.Serial, policy, device, data=None, bestEval: float = None):
     steps = 0
     totalReward = 0.0
 
@@ -174,7 +180,13 @@ def eval_policy(env: pufferlib.vector.Serial, policy, device, data=None):
     info["reward"] = totalReward
     info["length"] = steps
 
-    return info
+    score = info["progress"] + (100 / sqrt(steps))
+    if bestEval is not None and score >= bestEval:
+        bestEval = score
+        clean_pufferl.save_checkpoint(data)
+        data.msg = f"Checkpoint saved at update {data.epoch} for new best eval {bestEval}"
+
+    return info, bestEval
 
 
 if __name__ == "__main__":
@@ -191,7 +203,6 @@ if __name__ == "__main__":
         choices="train eval evaluate playtest autotune sweep".split(),
     )
     parser.add_argument("--sweep-child", action="store_true")
-    parser.add_argument("--use-rnn", action="store_false")
     parser.add_argument("--eval-model-path", type=str, default=None, help="Path to model to evaluate")
     parser.add_argument("--render", action="store_true", help="Enable rendering")
     parser.add_argument("--wandb-entity", type=str, default="capnspacehook", help="WandB entity")
@@ -229,7 +240,35 @@ if __name__ == "__main__":
     parser.add_argument("--train.update-epochs", type=int, default=6)
     parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)
     parser.add_argument("--train.vf-coef", type=float, default=0.3197591777413355)
-    parser.add_argument("--train.target-kl", type=float, default=0.2)
+    parser.add_argument("--train.target-kl", type=float, default=None)
+
+    parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=4)
+    parser.add_argument("--train.cnn-filters", type=int, default=32)
+    parser.add_argument("--train.entity-id-embedding-dimensions", type=int, default=4)
+    parser.add_argument("--train.features-fc-layers", type=int, default=1)
+    parser.add_argument("--train.features-fc-hidden-units", type=int, default=256)
+    parser.add_argument("--train.lstm-layers", type=int, default=1)
+    parser.add_argument("--train.lstm-hidden-units", type=int, default=512)
+    parser.add_argument("--train.actor-layers", type=int, default=1)
+    parser.add_argument("--train.actor-hidden-units", type=int, default=512)
+    parser.add_argument("--train.critic-layers", type=int, default=1)
+    parser.add_argument("--train.critic-hidden-units", type=int, default=512)
+
+    parser.add_argument("--train.reward-scale", type=float, default=0.004)
+    parser.add_argument("--train.forward-reward", type=float, default=1.0)
+    parser.add_argument("--train.progress-reward", type=float, default=0.0)
+    parser.add_argument("--train.backwards-punishment", type=float, default=-0.25)
+    parser.add_argument("--train.powerup-reward", type=float, default=15.0)
+    parser.add_argument("--train.hit-punishment", type=float, default=-10.0)
+    parser.add_argument("--train.heart-reward", type=float, default=25.0)
+    parser.add_argument("--train.moving-platform-x-reward", type=float, default=1.15)
+    parser.add_argument("--train.moving-platform-y-reward", type=float, default=0.25)
+    parser.add_argument("--train.clear-level-reward", type=float, default=35)
+    parser.add_argument("--train.death-punishment", type=float, default=-30.0)
+    parser.add_argument("--train.game-over-punishment", type=float, default=-35.0)
+    parser.add_argument("--train.coin-reward", type=float, default=2)
+    parser.add_argument("--train.score-reward", type=float, default=0.01)
+    parser.add_argument("--train.clock-punishment", type=float, default=-0.01)
 
     parser.add_argument(
         "--vec.backend", type=str, default="multiprocessing", choices="serial multiprocessing ray".split()
@@ -255,6 +294,7 @@ if __name__ == "__main__":
     args["vec"] = pufferlib.namespace(**args["vec"])
     args = pufferlib.namespace(**args)
 
+    args.train.env = "sml"
     if args.train.seed == -1:
         args.train.seed = np.random.randint(2**32 - 1, dtype="int64").item()
 
@@ -271,10 +311,12 @@ if __name__ == "__main__":
             os._exit(0)
     elif args.mode in ("eval", "evaluate"):
         try:
-            env = pufferlib.vector.make(createSMLEnv, env_kwargs=dict(isEval=True, isInteractiveEval=True))
+            env = pufferlib.vector.make(
+                createSMLEnv, env_args=(args.train,), env_kwargs=dict(render=args.render)
+            )
 
             if args.eval_model_path is None:
-                policy = make_policy(env, args.use_rnn).to(args.train.device)
+                policy = make_policy(env, args.train).to(args.train.device)
             else:
                 policy = th.load(args.eval_model_path, map_location=args.train.device)
 
@@ -284,7 +326,7 @@ if __name__ == "__main__":
             os._exit(0)
     elif args.mode == "playtest":
         try:
-            env = createSMLEnv(render=True, isPlaytest=True)
+            env = createSMLEnv(args.train, render=True, isPlaytest=True)
             obs, _ = env.reset()
             while True:
                 obs, rew, term, trunc, _ = env.step(0)

@@ -37,7 +37,7 @@ GAME_AREA_HEIGHT = 16
 GAME_AREA_WIDTH = 20
 
 # update if the maximum tile value changes
-MAX_TILE = 29
+MAX_TILE = 44
 
 LEVEL_END_X_POS = {
     "1-1": 2600,

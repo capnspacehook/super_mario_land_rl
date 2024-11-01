@@ -13,18 +13,27 @@ from super_mario_land.settings import *
 
 
 class Recurrent(LSTMWrapper):
-    def __init__(self, env, policy):
-        super().__init__(env, policy, FEATURES_FC_HIDDEN_UNITS, LSTM_HIDDEN_UNITS, 1)
+    def __init__(self, env, policy, config):
+        super().__init__(
+            env, policy, config.features_fc_hidden_units, config.lstm_hidden_units, config.lstm_layers
+        )
 
 
 class Policy(nn.Module):
-    def __init__(
-        self,
-        env: GymnasiumPufferEnv,
-    ):
+    def __init__(self, env: GymnasiumPufferEnv, config):
         super().__init__()
 
         activationFn = ACTIVATION_FN
+        gameAreaEmbeddingDims = config.game_area_embedding_dimensions
+        cnnFilters = config.cnn_filters
+        entityIDEmbeddingDims = config.entity_id_embedding_dimensions
+        featuresFCLayers = config.features_fc_layers
+        featuresFCHiddenUnits = config.features_fc_hidden_units
+        lstmHiddenUnits = config.lstm_hidden_units
+        actorHiddenUnits = config.actor_hidden_units
+        actorLayers = config.actor_layers
+        criticHiddenUnits = config.critic_hidden_units
+        criticLayers = config.critic_layers
 
         self.dtype = nativize_dtype(env.emulated)
         self.nActions = env.single_action_space.n
@@ -33,39 +42,60 @@ class Policy(nn.Module):
         gameArea = observationSpace[GAME_AREA_OBS]
 
         # account for 0 in number of embeddings
-        self.gameAreaEmbedding = nn.Embedding(MAX_TILE + 1, GAME_AREA_EMBEDDING_DIM)
+        self.gameAreaEmbedding = nn.Embedding(MAX_TILE + 1, gameAreaEmbeddingDims)
 
         self.gameAreaCNN = nn.Sequential(
-            layer_init(nn.Conv2d(GAME_AREA_EMBEDDING_DIM, 32, kernel_size=2, stride=1, padding=1)),
+            layer_init(nn.Conv2d(gameAreaEmbeddingDims, cnnFilters, kernel_size=2, stride=1, padding=1)),
             activationFn(),
-            layer_init(nn.Conv2d(32, 32, kernel_size=2, stride=2, padding=1)),
+            layer_init(nn.Conv2d(cnnFilters, cnnFilters, kernel_size=2, stride=2, padding=1)),
             activationFn(),
-            layer_init(nn.Conv2d(32, 32, kernel_size=2, stride=2, padding=1)),
+            layer_init(nn.Conv2d(cnnFilters, cnnFilters, kernel_size=2, stride=2, padding=1)),
             activationFn(),
             nn.Flatten(),
         )
         cnnOutputSize = self._computeCNNShape(gameArea)
 
         # account for 0 in number of embeddings
-        self.entityIDEmbedding = nn.Embedding(MAX_ENTITY_ID + 1, ENTITY_EMBEDDING_DIM)
+        self.entityIDEmbedding = nn.Embedding(MAX_ENTITY_ID + 1, entityIDEmbeddingDims)
 
         featureDims = (
-            cnnOutputSize + MARIO_INFO_SIZE + (10 * (ENTITY_EMBEDDING_DIM + ENTITY_INFO_SIZE)) + SCALAR_SIZE
+            cnnOutputSize + MARIO_INFO_SIZE + (10 * (entityIDEmbeddingDims + ENTITY_INFO_SIZE)) + SCALAR_SIZE
         )
-        self.featuresFC = layer_init(nn.Linear(featureDims, FEATURES_FC_HIDDEN_UNITS))
+        # TODO: support more layers if needed
+        if featuresFCLayers == 1:
+            self.featuresFC = nn.Sequential(
+                layer_init(nn.Linear(featureDims, featuresFCHiddenUnits)),
+                activationFn(),
+            )
+        else:
+            self.featuresFC = nn.Sequential(
+                layer_init(nn.Linear(featureDims, featuresFCHiddenUnits)),
+                activationFn(),
+                layer_init(nn.Linear(featuresFCHiddenUnits, featuresFCHiddenUnits)),
+                activationFn(),
+            )
 
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(LSTM_HIDDEN_UNITS, ACTOR_HIDDEN_UNITS), std=0.01),
+        actor = [
+            layer_init(nn.Linear(lstmHiddenUnits, actorHiddenUnits), std=0.01),
             activationFn(),
-            layer_init(nn.Linear(ACTOR_HIDDEN_UNITS, self.nActions), std=0.01),
+        ]
+        for _ in range(actorLayers - 1):
+            actor.append(layer_init(nn.Linear(actorHiddenUnits, actorHiddenUnits), std=0.01))
+            actor.append(activationFn())
+        actor.append(layer_init(nn.Linear(actorHiddenUnits, self.nActions), std=0.01))
+        actor.append(activationFn())
+        self.actor = nn.Sequential(*actor)
+
+        critic = [
+            layer_init(nn.Linear(lstmHiddenUnits, criticHiddenUnits), std=1),
             activationFn(),
-        )
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(LSTM_HIDDEN_UNITS, CRITIC_HIDDEN_UNITS), std=1),
-            activationFn(),
-            layer_init(nn.Linear(CRITIC_HIDDEN_UNITS, 1), std=1),
-            activationFn(),
-        )
+        ]
+        for _ in range(criticLayers - 1):
+            critic.append(layer_init(nn.Linear(criticHiddenUnits, criticHiddenUnits), std=1))
+            critic.append(activationFn())
+        critic.append(layer_init(nn.Linear(criticHiddenUnits, 1), std=1))
+        critic.append(activationFn())
+        self.critic = nn.Sequential(*critic)
 
     def forward(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
         hidden = self.encode_observations(obs)

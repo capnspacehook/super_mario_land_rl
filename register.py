@@ -9,6 +9,7 @@ from wrappers import MonitorTraining
 
 
 def createSMLEnv(
+    config,
     rom: Path = Path("games", "super_mario_land.gb"),
     render: bool = False,
     speed: int = 0,
@@ -23,6 +24,8 @@ def createSMLEnv(
         logLvl = "INFO"
 
     shouldRender = render or isPlaytest or isInteractiveEval
+    if speed == 0 and isPlaytest:
+        speed = 1
 
     pyboy = PyBoy(
         str(rom),
@@ -35,6 +38,7 @@ def createSMLEnv(
 
     env = MarioLandEnv(
         pyboy,
+        config,
         render=render,
         isEval=isEval,
         isPlaytest=isPlaytest,

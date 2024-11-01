@@ -41,6 +41,7 @@ class MarioLandEnv(Env):
     def __init__(
         self,
         pyboy: PyBoy,
+        config,
         render: bool = False,
         isEval: bool = False,
         isPlaytest: bool = False,
@@ -81,6 +82,30 @@ class MarioLandEnv(Env):
 
         self.episodeProgress = 0
         self.onGroundFor = 0
+
+        self.rewardScale = config.reward_scale
+        self.forwardRewardCoef = config.forward_reward
+        self.progressRewardCoef = config.progress_reward
+        self.backwardsPunishmentCoef = config.backwards_punishment
+        self.powerupReward = config.powerup_reward
+        self.hitPunishment = config.hit_punishment
+        self.heartReward = config.heart_reward
+        self.movingPlatformXRewardCoef = config.moving_platform_x_reward
+        self.movingPlatformYRewardCoef = config.moving_platform_y_reward
+        self.levelClearReward = config.clear_level_reward
+        self.levelClearTopReward = self.levelClearReward / 5
+        self.levelClearLivesRewardCoef = self.levelClearReward / 10
+        self.levelClearPowerupReward = self.levelClearReward / 20
+        self.deathPunishment = config.death_punishment
+        self.gameOverPunishment = config.game_over_punishment
+        self.starPunishment = config.game_over_punishment
+        self.heartFarmingPunishment = config.game_over_punishment
+        self.coinReward = config.coin_reward
+        self.scoreRewardCoef = config.score_reward
+        self.clockPunishment = config.clock_punishment
+        self.boulderReward = self.forwardRewardCoef * 5
+        self.hitBossReward = self.forwardRewardCoef * 5
+        self.killBossReward = self.hitBossReward * 2
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
 
@@ -478,7 +503,7 @@ class MarioLandEnv(Env):
                 self.onGroundFor += 1
 
             # compute reward, handle dying or level completion
-            reward = self.reward(curState)
+            reward = self.reward(curState) * self.rewardScale
             totalReward += reward
 
             if self.shouldRecord:
@@ -522,23 +547,23 @@ class MarioLandEnv(Env):
             self.deathCounter += 1
 
             if curState.livesLeft == 0:
-                return GAME_OVER_PUNISHMENT
+                return self.gameOverPunishment
 
-            return DEATH_PUNISHMENT
+            return self.deathPunishment
 
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
-            levelClear = LEVEL_CLEAR_REWARD
+            levelClear = self.levelClearReward
             # reward clearing a level through the top spot
             if curState.yPos > 60:
-                levelClear += LEVEL_CLEAR_TOP_REWARD
+                levelClear += self.levelClearTopReward
             # reward clearing a level with extra lives
-            levelClear += curState.livesLeft * LEVEL_CLEAR_LIVES_COEF_REWARD
+            levelClear += curState.livesLeft * self.levelClearLivesRewardCoef
             # reward clearing a level while powered up
             if curState.powerupStatus == STATUS_BIG:
-                levelClear += LEVEL_CLEAR_BIG_REWARD
+                levelClear += self.levelClearPowerupReward
             elif curState.powerupStatus == STATUS_FIRE:
-                levelClear += LEVEL_CLEAR_FIRE_REWARD
+                levelClear += self.levelClearPowerupReward
 
             if curState.world == (4, 2):
                 self.cellScore += levelClear
@@ -547,32 +572,34 @@ class MarioLandEnv(Env):
             return levelClear
 
         # add time punishment every step to encourage speed more
-        clock = CLOCK_PUNISHMENT
+        clock = self.clockPunishment
 
         # reward level progress
-        progress = np.clip(curState.levelProgressMax - self.prevState.levelProgressMax, 0, MARIO_MAX_X_SPEED)
-        progress = progress * PROGRESS_REWARD_COEF
+        progress = np.clip(
+            curState.levelProgressSinceDeath - self.prevState.levelProgressSinceDeath, 0, MARIO_MAX_X_SPEED
+        )
+        progress = progress * self.progressRewardCoef
 
         # reward or punish depending on the speed and direction mario
         # is traveling
         xSpeed = np.clip(curState.xPos - self.prevState.xPos, -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
         movement = 0
         if xSpeed > 0:
-            movement = xSpeed * FORWARD_REWARD_COEF
+            movement = xSpeed * self.forwardRewardCoef
         elif xSpeed < 0:
-            movement = xSpeed * BACKWARD_PUNISHMENT_COEF
+            movement = -xSpeed * self.backwardsPunishmentCoef
 
         # reward score increasing
         score = 0
         if curState.score > self.prevState.score:
-            score = (curState.score - self.prevState.score) * SCORE_REWARD_COEF
+            score = (curState.score - self.prevState.score) * self.scoreRewardCoef
 
         # reward coins increasing
         if curState.coins >= self.prevState.coins:
             collectedCoins = curState.coins - self.prevState.coins
         else:
             collectedCoins = (99 - self.prevState.coins) + curState.coins
-        coins = (collectedCoins) * COIN_REWARD
+        coins = (collectedCoins) * self.coinReward
         self.coinCounter += collectedCoins
 
         # the game registers mario as on the ground a couple of frames
@@ -583,26 +610,12 @@ class MarioLandEnv(Env):
         # forward or upwards to encourage waiting on platforms until a
         # more optimal jump can be made
         movingPlatform = 0
-        movPlatObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
-        if onGround and onMovingPlatform:
+        _, onMovingPlatform = self._standingOnMovingPlatform(curState)
+        # don't reward when moving forward on a moving platform
+        if onGround and onMovingPlatform and not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]:
             ySpeed = np.clip(curState.yPos - self.prevState.yPos, -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
-            # don't reward when moving forward on a moving platform
-            if not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]:
-                movingPlatform += max(0, xSpeed) * MOVING_PLATFORM_X_REWARD_COEF
-            movingPlatform += max(0, ySpeed) * MOVING_PLATFORM_Y_REWARD_COEF
-
-            curPlatPos = np.array((curState.xPos, curState.yPos))
-            platDistances = []
-            for obj in curState.objects:
-                if movPlatObj == obj or obj.typeID != MOVING_PLATFORM_TYPE_ID or curState.xPos > obj.xPos:
-                    continue
-                platDistances.append(np.linalg.norm(curPlatPos - np.array((obj.xPos, obj.yPos))))
-
-            if len(platDistances) > 0:
-                minDistance = min(platDistances)
-                movingPlatform += MOVING_PLATFORM_DISTANCE_REWARD_MAX - (
-                    minDistance * (MOVING_PLATFORM_DISTANCE_REWARD_MAX / MAX_EUCLIDEAN_DISTANCE)
-                )
+            movingPlatform += max(0, xSpeed) * self.movingPlatformXRewardCoef
+            movingPlatform += max(0, ySpeed) * self.movingPlatformYRewardCoef
 
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
@@ -616,7 +629,7 @@ class MarioLandEnv(Env):
             and not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]
             and self._standingOnTiles(bouncing_boulder_tiles)
         ):
-            standingOnBoulder = BOULDER_REWARD
+            standingOnBoulder = self.boulderReward
 
         # reward getting powerups and manage powerup related bookkeeping
         powerup = self._handlePowerup(curState)
@@ -633,10 +646,10 @@ class MarioLandEnv(Env):
                 and curState.xPos - HEART_FARM_X_POS_MULTIPLE <= self.heartGetXPos
             ):
                 self.heartFarming = True
-                heart = HEART_FARM_PUNISHMENT
+                heart = self.heartFarmingPunishment
             else:
                 # reward getting 1-up
-                heart = (curState.livesLeft - self.prevState.livesLeft) * HEART_REWARD
+                heart = (curState.livesLeft - self.prevState.livesLeft) * self.heartReward
                 self.heartCounter += curState.livesLeft - self.prevState.livesLeft
 
             self.heartGetXPos = curState.xPos
@@ -645,9 +658,9 @@ class MarioLandEnv(Env):
         boss = 0
         if curState.bossActive and curState.bossHealth < self.prevState.bossHealth:
             if self.prevState.bossHealth - curState.bossHealth == 1:
-                boss = HIT_BOSS_REWARD
+                boss = self.hitBossReward
             elif curState.bossHealth == 0:
-                boss = KILL_BOSS_REWARD
+                boss = self.killBossReward
 
         reward = (
             clock
@@ -707,7 +720,7 @@ class MarioLandEnv(Env):
             frames = self.pyboy.memory[FRAME_COUNTER_MEM_VAL]
             extra = (frames - 1) % 4
             self.invincibilityTimer += extra
-            powerup += STAR_REWARD
+            powerup += self.starPunishment
         if curState.hasStar:
             # current powerup status will be set to star, so set it to
             # the powerup of the last frame so the base powerup is accurate
@@ -719,20 +732,20 @@ class MarioLandEnv(Env):
         if curState.powerupStatus != self.prevState.powerupStatus:
             if self.prevState.powerupStatus == STATUS_SMALL:
                 # mario got a mushroom
-                powerup = MUSHROOM_REWARD
+                powerup = self.powerupReward
             elif self.prevState.powerupStatus == STATUS_GROWING and curState.powerupStatus == STATUS_SMALL:
                 # mario got hit while growing from a mushroom
-                powerup = HIT_PUNISHMENT
+                powerup = self.hitPunishment
             elif self.prevState.powerupStatus == STATUS_BIG:
                 if curState.powerupStatus == STATUS_FIRE:
-                    powerup = FLOWER_REWARD
+                    powerup = self.powerupReward
                 elif curState.powerupStatus == STATUS_SMALL:
                     self.invincibilityTimer = SHRINK_TIME
-                    powerup = HIT_PUNISHMENT
+                    powerup = self.hitPunishment
             elif self.prevState.powerupStatus == STATUS_FIRE:
                 # mario got hit and lost the fire flower
                 self.invincibilityTimer = SHRINK_TIME
-                powerup = HIT_PUNISHMENT
+                powerup = self.hitPunishment
 
         if self.invincibilityTimer != 0:
             curState.invincibleTimer = self.invincibilityTimer
@@ -875,6 +888,7 @@ class MarioLandEnv(Env):
                     self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
                     self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
                     self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
+                    self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_B)
 
                     unsafeState = False
                     # if mario dies without moving in less than 2 seconds

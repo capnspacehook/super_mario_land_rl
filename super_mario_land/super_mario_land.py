@@ -217,7 +217,7 @@ class MarioLandEnv(Env):
             with open(stateFile, "rb") as f:
                 self.pyboy.load_state(f)
                 curState = self.gameState()
-                cellHash, hashInput = self.cellHash(curState)
+                cellHash, hashInput = self.cellHash(curState, isInitial=True)
                 if self.stateManager.cell_exists(cellHash):
                     return
 
@@ -552,7 +552,7 @@ class MarioLandEnv(Env):
             return self.deathPunishment
 
         # handle level clear
-        if curState.statusTimer == TIMER_LEVEL_CLEAR:
+        if curState.statusTimer == TIMER_LEVEL_CLEAR or curState.gameState == 5:
             levelClear = self.levelClearReward
             # reward clearing a level through the top spot
             if curState.yPos > 60:
@@ -566,7 +566,6 @@ class MarioLandEnv(Env):
                 levelClear += self.levelClearPowerupReward
 
             if curState.world == (4, 2):
-                self.cellScore += levelClear
                 return levelClear
 
             return levelClear
@@ -896,7 +895,7 @@ class MarioLandEnv(Env):
                     # that will result in an unpreventable death
                     for _ in range(20):
                         self.pyboy.tick(count=6, render=False)
-                        if self.pyboy.memory[GAME_STATE_MEM_VAL] in GAME_STATES_DEAD:
+                        if self.pyboy.memory[GAME_STATE_MEM_VAL] != 0:
                             unsafeState = True
                             break
 
@@ -916,10 +915,14 @@ class MarioLandEnv(Env):
                 except Exception as e:
                     print(e)
 
-    def cellHash(self, curState: MarioLandGameState) -> Tuple[str | None, str | None]:
+    def cellHash(self, curState: MarioLandGameState, isInitial=False) -> Tuple[str | None, str | None]:
         # don't save states when mario isn't on the ground or if mario
         # isn't controllable
-        if self.onGroundFor != ON_GROUND_FRAMES or curState.gameState != 0:
+        if not isInitial and (
+            self.onGroundFor != ON_GROUND_FRAMES
+            or curState.gameState != 0
+            or curState.xPos > LEVEL_END_X_POS[self.levelStr] - 30
+        ):
             return None, None
 
         roundedXPos = X_POS_MULTIPLE * floor(curState.xPos / X_POS_MULTIPLE)

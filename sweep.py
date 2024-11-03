@@ -1,4 +1,4 @@
-from math import ceil, floor, log2, sqrt
+from math import ceil, floor, log, log2, sqrt
 import os
 import subprocess
 import sys
@@ -16,10 +16,12 @@ class CustomWandbCarbs(WandbCarbs):
         super().__init__(carbs, wandb_run)
 
     def _transform_suggestion(self, suggestion):
-        suggestion["batch_size"] = 2 ** suggestion["batch_size"]
-        suggestion["minibatch_size"] = closest_power(suggestion["minibatch_size"])
-        suggestion["minibatch_size"] = suggestion["batch_size"] // suggestion["minibatch_size"]
         suggestion["bptt_horizon"] = closest_power(suggestion["bptt_horizon"])
+
+        suggestion["features_fc_hidden_units"] = 2 ** suggestion["features_fc_hidden_units"]
+        suggestion["lstm_hidden_units"] = 2 ** suggestion["lstm_hidden_units"]
+        suggestion["actor_hidden_units"] = 2 ** suggestion["actor_hidden_units"]
+        suggestion["critic_hidden_units"] = 2 ** suggestion["critic_hidden_units"]
 
         suggestion["game_over_punishment"] = (
             suggestion["game_over_punishment"] * suggestion["death_punishment"]
@@ -30,9 +32,12 @@ class CustomWandbCarbs(WandbCarbs):
     def _suggestion_from_run(self, run):
         suggestion = super()._suggestion_from_run(run)
 
-        suggestion["minibatch_size"] = suggestion["batch_size"] // suggestion["minibatch_size"]
-        suggestion["batch_size"] = int(log2(suggestion["batch_size"]))
         suggestion["bptt_horizon"] = int(log2(suggestion["bptt_horizon"]))
+
+        suggestion["features_fc_hidden_units"] = int(log2(suggestion["features_fc_hidden_units"]))
+        suggestion["lstm_hidden_units"] = int(log2(suggestion["lstm_hidden_units"]))
+        suggestion["actor_hidden_units"] = int(log2(suggestion["actor_hidden_units"]))
+        suggestion["critic_hidden_units"] = int(log2(suggestion["critic_hidden_units"]))
 
         suggestion["game_over_punishment"] = (
             suggestion["game_over_punishment"] / suggestion["death_punishment"]
@@ -50,46 +55,24 @@ def sweep(args, train):
         ),
         # hyperparams
         Param(
-            name="batch_size",
-            space=LinearSpace(min=13, max=17, scale=3, is_integer=True),
-            search_center=16,
-        ),
-        Param(
             name="bptt_horizon",
             space=LinearSpace(min=2, scale=32, is_integer=True),
             search_center=16,
         ),
-        Param(name="clip_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.2),
         Param(name="ent_coef", space=LogSpace(min=0.0), search_center=0.0075),
         Param(name="gae_lambda", space=LogitSpace(min=0.0, max=1.0), search_center=0.95),
         Param(name="gamma", space=LogitSpace(min=0.0, max=1.0), search_center=0.99),
         Param(name="learning_rate", space=LogSpace(min=0.0, scale=0.5), search_center=0.0001),
         Param(name="max_grad_norm", space=LinearSpace(min=0.0, scale=3.0), search_center=1.0),
         Param(
-            name="minibatch_size",
-            space=LinearSpace(min=4, scale=16, is_integer=True),
-            search_center=8,
-        ),
-        Param(
             name="update_epochs", space=LinearSpace(min=1, max=10, scale=3, is_integer=True), search_center=5
         ),
-        Param(name="vf_clip_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.1),
         Param(name="vf_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.3),
         # network arch
         Param(
-            name="game_area_embedding_dimensions",
-            space=LinearSpace(min=2, max=16, scale=6, is_integer=True),
-            search_center=4,
-        ),
-        Param(
-            name="cnn_filters",
-            space=LinearSpace(min=1, max=128, scale=32, is_integer=True),
-            search_center=32,
-        ),
-        Param(
-            name="entity_id_embedding_dimensions",
-            space=LinearSpace(min=2, max=16, scale=6, is_integer=True),
-            search_center=4,
+            name="features_fc_hidden_units",
+            space=LinearSpace(min=7, max=10, scale=3, is_integer=True),
+            search_center=8,
         ),
         Param(
             name="features_fc_layers",
@@ -97,19 +80,14 @@ def sweep(args, train):
             search_center=1,
         ),
         Param(
-            name="features_fc_hidden_units",
-            space=LinearSpace(min=2, max=2048, scale=512, is_integer=True),
-            search_center=256,
-        ),
-        Param(
-            name="lstm_layers",
-            space=LinearSpace(min=1, max=2, scale=1.5, is_integer=True),
-            search_center=1,
-        ),
-        Param(
             name="lstm_hidden_units",
-            space=LinearSpace(min=2, max=4096, scale=2096, is_integer=True),
-            search_center=512,
+            space=LinearSpace(min=8, max=11, scale=3, is_integer=True),
+            search_center=9,
+        ),
+        Param(
+            name="actor_hidden_units",
+            space=LinearSpace(min=8, max=11, scale=3, is_integer=True),
+            search_center=9,
         ),
         Param(
             name="actor_layers",
@@ -117,19 +95,14 @@ def sweep(args, train):
             search_center=1,
         ),
         Param(
-            name="actor_hidden_units",
-            space=LinearSpace(min=2, max=4096, scale=2096, is_integer=True),
-            search_center=512,
+            name="critic_hidden_units",
+            space=LinearSpace(min=8, max=11, scale=3, is_integer=True),
+            search_center=9,
         ),
         Param(
             name="critic_layers",
             space=LinearSpace(min=1, max=2, scale=1.5, is_integer=True),
             search_center=1,
-        ),
-        Param(
-            name="critic_hidden_units",
-            space=LinearSpace(min=2, max=4096, scale=2096, is_integer=True),
-            search_center=512,
         ),
         # rewards
         Param(name="reward_scale", space=LogSpace(min=0.0, max=1.0), search_center=0.004),

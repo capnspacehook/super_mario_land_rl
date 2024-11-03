@@ -301,13 +301,7 @@ def close(data):
     try:
         data.vecenv.close()
         data.utilization.stop()
-        config = data.config
-        if data.wandb is not None:
-            artifact_name = f"{config.exp_id}_model"
-            artifact = data.wandb.Artifact(artifact_name, type="model")
-            model_path = save_checkpoint(data)
-            artifact.add_file(model_path)
-            data.wandb.run.log_artifact(artifact)
+        save_checkpoint(data, "finished")
     except Exception:
         Console().print_exception()
 
@@ -541,13 +535,13 @@ class Utilization(Thread):
         self.stopped = True
 
 
-def save_checkpoint(data):
+def save_checkpoint(data, suffix="best"):
     config = data.config
     path = os.path.join(config.data_dir, wandb.run.id)
     if not os.path.exists(path):
         os.makedirs(path)
 
-    model_name = "model_best.pt"
+    model_name = f"model_{suffix}.pt"
     model_path = os.path.join(path, model_name)
     torch.save(data.uncompiled_policy, model_path)
 

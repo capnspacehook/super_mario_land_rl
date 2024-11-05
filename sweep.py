@@ -1,56 +1,32 @@
-from math import ceil, floor, log, log2, sqrt
+from math import ceil, floor, log, sqrt
 import os
+import os.path
+from pathlib import Path
 import subprocess
 import sys
 import time
 
 from rich.console import Console
 
-from carbs import CARBS, CARBSParams, LinearSpace, LogitSpace, LogSpace, Param
+from carbs import (
+    CARBS,
+    CARBSParams,
+    LinearSpace,
+    LogitSpace,
+    LogSpace,
+    ObservationInParam,
+    Param,
+    WandbLoggingParams,
+)
 import wandb
-from wandb_carbs import WandbCarbs, create_sweep
-
-
-class CustomWandbCarbs(WandbCarbs):
-    def __init__(self, carbs: CARBS, wandb_run=None):
-        super().__init__(carbs, wandb_run)
-
-    def _transform_suggestion(self, suggestion):
-        suggestion["bptt_horizon"] = closest_power(suggestion["bptt_horizon"])
-
-        suggestion["features_fc_hidden_units"] = 2 ** suggestion["features_fc_hidden_units"]
-        suggestion["lstm_hidden_units"] = 2 ** suggestion["lstm_hidden_units"]
-        suggestion["actor_hidden_units"] = 2 ** suggestion["actor_hidden_units"]
-        suggestion["critic_hidden_units"] = 2 ** suggestion["critic_hidden_units"]
-
-        suggestion["game_over_punishment"] = (
-            suggestion["game_over_punishment"] * suggestion["death_punishment"]
-        )
-
-        return suggestion
-
-    def _suggestion_from_run(self, run):
-        suggestion = super()._suggestion_from_run(run)
-
-        suggestion["bptt_horizon"] = int(log2(suggestion["bptt_horizon"]))
-
-        suggestion["features_fc_hidden_units"] = int(log2(suggestion["features_fc_hidden_units"]))
-        suggestion["lstm_hidden_units"] = int(log2(suggestion["lstm_hidden_units"]))
-        suggestion["actor_hidden_units"] = int(log2(suggestion["actor_hidden_units"]))
-        suggestion["critic_hidden_units"] = int(log2(suggestion["critic_hidden_units"]))
-
-        suggestion["game_over_punishment"] = (
-            suggestion["game_over_punishment"] / suggestion["death_punishment"]
-        )
-
-        return suggestion
+from wandb_carbs import create_sweep
 
 
 def sweep(args, train):
     params = [
         Param(
             name="total_timesteps",
-            space=LinearSpace(min=20_000_000, scale=30_000_000, is_integer=True),
+            space=LinearSpace(min=20_000_000, scale=30_000_000, rounding_factor=1_000_000, is_integer=True),
             search_center=35_000_000,
         ),
         # hyperparams
@@ -61,7 +37,7 @@ def sweep(args, train):
         ),
         Param(name="ent_coef", space=LogSpace(min=0.0), search_center=0.0075),
         Param(name="gae_lambda", space=LogitSpace(min=0.0, max=1.0), search_center=0.95),
-        Param(name="gamma", space=LogitSpace(min=0.0, max=1.0), search_center=0.99),
+        Param(name="gamma", space=LogitSpace(min=0.0, max=1.0, scale=1.5), search_center=0.99),
         Param(name="learning_rate", space=LogSpace(min=0.0, scale=0.5), search_center=0.0001),
         Param(name="max_grad_norm", space=LinearSpace(min=0.0, scale=3.0), search_center=1.0),
         Param(
@@ -122,6 +98,7 @@ def sweep(args, train):
     ]
 
     sweepID = args.wandb_sweep
+    carbsStateFile = "carbs.state"
     if not sweepID:
         sweepID = create_sweep(
             sweep_name=args.wandb_name,
@@ -132,7 +109,7 @@ def sweep(args, train):
 
     if args.sweep_child:
         try:
-            trainWithSuggestion(args, params, train)
+            trainWithSuggestion(args, carbsStateFile, params, train)
         except Exception:
             Console().print_exception()
         os._exit(0)
@@ -157,37 +134,62 @@ def sweep(args, train):
     )
 
 
-def trainWithSuggestion(args, params, train):
-    wandb.init()
+def trainWithSuggestion(args, stateFile, params, train):
     args.track = False
+    statePath = str(Path("carbs") / "carbs_experiment" / stateFile)
 
     try:
-        config = CARBSParams(
-            seed=int(time.time()),
-            better_direction_sign=1,
-            max_suggestion_cost=21600,  # 6h
-            num_random_samples=len(params),
-            initial_search_radius=0.5,
-            is_wandb_logging_enabled=False,
-        )
-        carbs = CARBS(config=config, params=params)
+        if os.path.exists(statePath):
+            carbs = CARBS.load_from_file(statePath, is_wandb_logging_enabled=True)
+            carbs._set_seed(int(time.time()))
+            print(
+                f"loaded CARBS from {statePath}: success={len(carbs.success_observations)} failures={len(carbs.failure_observations)} outstanding={len(carbs.outstanding_suggestions)} resample_count={carbs.resample_count}"
+            )
+        else:
+            config = CARBSParams(
+                seed=int(time.time()),
+                better_direction_sign=1,
+                max_suggestion_cost=14400,  # 4h
+                num_random_samples=len(params),
+                initial_search_radius=0.5,
+                wandb_params=WandbLoggingParams(root_dir="wandb"),
+                checkpoint_dir="carbs",
+            )
+            carbs = CARBS(config=config, params=params)
 
-        wandbCarbs = CustomWandbCarbs(carbs=carbs)
         print(f"CARBS is random sampling: {carbs._is_random_sampling()}")
         args.wandb = wandb
 
-        suggestion = wandbCarbs.suggest()
+        carbsSuggestion = carbs.suggest().suggestion
+        carbs.save_to_file(stateFile)
+
+        suggestion = carbsSuggestion.copy()
+        suggestion["suggestion_uuid"]
         del suggestion["suggestion_uuid"]
         print(f"Suggestion: {suggestion}")
 
-        # validate suggestion
-        if suggestion["features_fc_hidden_units"] > suggestion["lstm_hidden_units"]:
-            wandbCarbs.record_failure()
-            wandb.finish()
-            return
+        suggestion["bptt_horizon"] = closest_power(suggestion["bptt_horizon"])
 
+        suggestion["features_fc_hidden_units"] = 2 ** suggestion["features_fc_hidden_units"]
+        suggestion["lstm_hidden_units"] = 2 ** suggestion["lstm_hidden_units"]
+        suggestion["actor_hidden_units"] = 2 ** suggestion["actor_hidden_units"]
+        suggestion["critic_hidden_units"] = 2 ** suggestion["critic_hidden_units"]
+
+        suggestion["game_over_punishment"] = (
+            suggestion["death_punishment"] * suggestion["game_over_punishment"]
+        )
         # negative values in log space isn't possible
         suggestion["clock_punishment"] = -suggestion["clock_punishment"]
+
+        wandb.run.config.__dict__["_locked"] = {}
+        wandb.run.config.update(dict(suggestion), allow_val_change=True)
+
+        # validate suggestion
+        if suggestion["features_fc_hidden_units"] > suggestion["lstm_hidden_units"]:
+            carbs.observe(ObservationInParam(input=carbsSuggestion, output=0.0, cost=0.0, is_failure=True))
+            carbs.save_to_file(stateFile)
+            wandb.finish()
+            return
 
         args.train.__dict__.update(dict(suggestion))
         print(f"Training args: {args.train}")
@@ -195,12 +197,12 @@ def trainWithSuggestion(args, params, train):
         startTime = time.time()
         evalInfos, stoppedEarly = train(args, shouldStopEarly)
         if stoppedEarly:
-            wandbCarbs.record_early_stop()
             wandb.finish()
             return
     except Exception:
         Console().print_exception()
-        wandbCarbs.record_failure()
+        carbs.observe(ObservationInParam(input=carbsSuggestion, output=0.0, cost=0.0, is_failure=True))
+        carbs.save_to_file(stateFile)
         wandb.finish()
         return
 
@@ -210,7 +212,17 @@ def trainWithSuggestion(args, params, train):
         bestEval = max(evalInfos, key=lambda i: i["progress"])
         runScore = bestEval["progress"] + (100 / sqrt(bestEval["length"]))
 
-    wandbCarbs.record_observation(objective=runScore, cost=totalTime)
+    carbs.observe(
+        ObservationInParam(input=carbsSuggestion, output=runScore, cost=totalTime, is_failure=False)
+    )
+    carbs.save_to_file(stateFile)
+
+    wandb.run.summary.update(
+        {
+            "carbs.objective": runScore,
+            "carbs.cost": totalTime,
+        }
+    )
     wandb.finish()
 
 

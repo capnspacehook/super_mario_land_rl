@@ -188,6 +188,8 @@ def trainWithSuggestion(args, stateFile, params, train):
         if suggestion["features_fc_hidden_units"] > suggestion["lstm_hidden_units"]:
             carbs.observe(ObservationInParam(input=carbsSuggestion, output=0.0, cost=0.0, is_failure=True))
             carbs.save_to_file(stateFile)
+
+            wandb.run.summary.update({"carbs.state": "failure"})
             wandb.finish()
             return
 
@@ -197,12 +199,15 @@ def trainWithSuggestion(args, stateFile, params, train):
         startTime = time.time()
         evalInfos, stoppedEarly = train(args, shouldStopEarly)
         if stoppedEarly:
+            wandb.run.summary.update({"carbs.state": "stopped_early"})
             wandb.finish()
             return
     except Exception:
         Console().print_exception()
         carbs.observe(ObservationInParam(input=carbsSuggestion, output=0.0, cost=0.0, is_failure=True))
         carbs.save_to_file(stateFile)
+
+        wandb.run.summary.update({"carbs.state": "failure"})
         wandb.finish()
         return
 
@@ -221,6 +226,7 @@ def trainWithSuggestion(args, stateFile, params, train):
         {
             "carbs.objective": runScore,
             "carbs.cost": totalTime,
+            "carbs.state": "success",
         }
     )
     wandb.finish()

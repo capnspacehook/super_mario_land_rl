@@ -103,8 +103,8 @@ class MarioLandEnv(Env):
         self.coinReward = config.coin_reward
         self.scoreRewardCoef = config.score_reward
         self.clockPunishment = config.clock_punishment
-        self.boulderReward = self.forwardRewardCoef * 5
-        self.hitBossReward = self.forwardRewardCoef * 5
+        self.boulderReward = self.forwardRewardCoef * 3
+        self.hitBossReward = self.forwardRewardCoef * 1.5
         self.killBossReward = self.hitBossReward * 2
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
@@ -421,6 +421,7 @@ class MarioLandEnv(Env):
                 self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
                 self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
                 self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
+                self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_B)
 
                 self.pyboy.tick(count=nopFrames, render=False)
                 curState = self.gameState()
@@ -588,11 +589,6 @@ class MarioLandEnv(Env):
         elif xSpeed < 0:
             movement = -xSpeed * self.backwardsPunishmentCoef
 
-        # reward score increasing
-        score = 0
-        if curState.score > self.prevState.score:
-            score = (curState.score - self.prevState.score) * self.scoreRewardCoef
-
         # reward coins increasing
         if curState.coins >= self.prevState.coins:
             collectedCoins = curState.coins - self.prevState.coins
@@ -652,6 +648,16 @@ class MarioLandEnv(Env):
                 self.heartCounter += curState.livesLeft - self.prevState.livesLeft
 
             self.heartGetXPos = curState.xPos
+
+        # reward killing enemies (and breaking blocks I guess)
+        score = 0
+        if curState.score > self.prevState.score:
+            # don't reward collecting coins or powerups twice
+            score = curState.score - self.prevState.score
+            score -= 100 * collectedCoins
+            if powerup > 0:
+                score -= 1000
+            score *= self.scoreRewardCoef
 
         # reward damaging or killing a boss
         boss = 0
@@ -895,7 +901,10 @@ class MarioLandEnv(Env):
                     # that will result in an unpreventable death
                     for _ in range(20):
                         self.pyboy.tick(count=6, render=False)
-                        if self.pyboy.memory[GAME_STATE_MEM_VAL] != 0:
+                        if (
+                            self.pyboy.memory[GAME_STATE_MEM_VAL] != 0
+                            or self.pyboy.memory[MARIO_ON_GROUND_MEM_VAL] == 0
+                        ):
                             unsafeState = True
                             break
 
@@ -924,6 +933,11 @@ class MarioLandEnv(Env):
             or curState.xPos > LEVEL_END_X_POS[self.levelStr] - 30
         ):
             return None, None
+
+        # don't save states when a star is present
+        for obj in curState.objects:
+            if obj.typeID == STAR_TYPE_ID:
+                return None, None
 
         roundedXPos = X_POS_MULTIPLE * floor(curState.xPos / X_POS_MULTIPLE)
         # avoid tons of different cells from mario just riding a platform

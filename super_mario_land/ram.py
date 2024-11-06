@@ -171,6 +171,7 @@ MOVING_PLATFORM_TYPE_ID = 7
 FLYING_MOTH_ARROW_TYPE_ID = 13
 BONE_FISH_TYPE_ID = 10
 SEAHORSE_TYPE_ID = 18
+STAR_TYPE_ID = 27
 _typeIDs = [
     # starts at 1 so 0 can function as 'no entity' when padded
     ((0x0,), 1),  # goomba
@@ -199,7 +200,7 @@ _typeIDs = [
     ((0x31,), 24),  # fist rock
     ((0x32,), 25),  # fist rock boss
     ((0x33, 0x47), 26),  # bouncing boulder
-    ((0x34,), 27),  # star
+    ((0x34,), STAR_TYPE_ID),  # star
     ((0x3C,), 28),  # flying rock
     ((0x3F,), 29),  # sphinx/dragon
     ((0x42,), 30),  # flying moth

@@ -225,7 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("--train.compile", action="store_true")
     parser.add_argument("--train.compile-mode", type=str, default="reduce-overhead")
 
-    parser.add_argument("--train.batch-size", type=int, default=131_072)  # not swept
+    parser.add_argument("--train.batch-size", type=int, default=65_536)  # not swept
     parser.add_argument("--train.bptt-horizon", type=int, default=32)
     parser.add_argument("--train.clip-coef", type=float, default=0.2)  # not swept
     parser.add_argument("--train.clip-vloss", action="store_false")
@@ -235,29 +235,29 @@ if __name__ == "__main__":
     parser.add_argument("--train.learning-rate", type=float, default=0.00025514449556214103)
     parser.add_argument("--train.anneal-lr", action="store_true")
     parser.add_argument("--train.max-grad-norm", type=float, default=0.9973977506160736)
-    parser.add_argument("--train.minibatch-size", type=int, default=32_768)  # not swept
+    parser.add_argument("--train.minibatch-size", type=int, default=16_384)  # not swept
     parser.add_argument("--train.norm-adv", action="store_false")
     parser.add_argument("--train.update-epochs", type=int, default=5)
     parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)  # not swept
     parser.add_argument("--train.vf-coef", type=float, default=0.3630041672396997)
     parser.add_argument("--train.target-kl", type=float, default=0.2)  # not swept
 
-    parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=8)  # not swept
+    parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=4)  # not swept
     parser.add_argument("--train.cnn-filters", type=int, default=32)  # not swept
-    parser.add_argument("--train.entity-id-embedding-dimensions", type=int, default=8)  # not swept
-    parser.add_argument("--train.features-fc-layers", type=int, default=1)
-    parser.add_argument("--train.features-fc-hidden-units", type=int, default=512)
+    parser.add_argument("--train.entity-id-embedding-dimensions", type=int, default=4)  # not swept
+    parser.add_argument("--train.features-fc-layers", type=int, default=2)
+    parser.add_argument("--train.features-fc-hidden-units", type=int, default=256)
     parser.add_argument("--train.lstm-layers", type=int, default=1)  # not swept
-    parser.add_argument("--train.lstm-hidden-units", type=int, default=1024)
-    parser.add_argument("--train.actor-layers", type=int, default=2)
-    parser.add_argument("--train.actor-hidden-units", type=int, default=1024)
-    parser.add_argument("--train.critic-layers", type=int, default=2)
-    parser.add_argument("--train.critic-hidden-units", type=int, default=1024)
+    parser.add_argument("--train.lstm-hidden-units", type=int, default=512)
+    parser.add_argument("--train.actor-layers", type=int, default=1)
+    parser.add_argument("--train.actor-hidden-units", type=int, default=512)
+    parser.add_argument("--train.critic-layers", type=int, default=1)
+    parser.add_argument("--train.critic-hidden-units", type=int, default=512)
 
     parser.add_argument("--train.reward-scale", type=float, default=0.0022504786371276824)
     parser.add_argument("--train.forward-reward", type=float, default=2.380733907222748)
     parser.add_argument("--train.progress-reward", type=float, default=0.0)
-    parser.add_argument("--train.backwards-punishment", type=float, default=-0.9292320609092712)
+    parser.add_argument("--train.backwards-punishment", type=float, default=0.0)
     parser.add_argument("--train.powerup-reward", type=float, default=7.641769647598267)
     parser.add_argument("--train.hit-punishment", type=float, default=-4.574222564697266)
     parser.add_argument("--train.heart-reward", type=float, default=11.48508906364441)
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     parser.add_argument("--train.game-over-punishment", type=float, default=-46.881105331669914)
     parser.add_argument("--train.coin-reward", type=float, default=0.4364973306655884)
     parser.add_argument("--train.score-reward", type=float, default=0.010005776927778072)
-    parser.add_argument("--train.clock-punishment", type=float, default=-0.06281267718102455)
+    parser.add_argument("--train.clock-punishment", type=float, default=0.0)
 
     parser.add_argument(
         "--vec.backend", type=str, default="multiprocessing", choices="serial multiprocessing ray".split()

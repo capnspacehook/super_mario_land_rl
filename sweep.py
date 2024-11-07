@@ -25,8 +25,6 @@ class CustomWandbCarbs(WandbCarbs):
         suggestion["game_over_punishment"] = (
             suggestion["death_punishment"] * suggestion["game_over_punishment"]
         )
-        # negative values in log space isn't possible
-        suggestion["clock_punishment"] = -suggestion["clock_punishment"]
 
         return suggestion
 
@@ -36,8 +34,6 @@ class CustomWandbCarbs(WandbCarbs):
         suggestion["game_over_punishment"] = (
             suggestion["game_over_punishment"] / suggestion["death_punishment"]
         )
-        # negative values in log space isn't possible
-        suggestion["clock_punishment"] = abs(suggestion["clock_punishment"])
 
         return suggestion
 
@@ -126,7 +122,7 @@ def trainWithSuggestion(args, params, train):
             max_suggestion_cost=14400,  # 4h
             num_random_samples=len(params),
             initial_search_radius=0.5,
-            num_candidates_for_suggestion_per_dim=10,
+            num_candidates_for_suggestion_per_dim=50,
             wandb_params=WandbLoggingParams(root_dir="wandb"),
         )
         carbs = CARBS(config=config, params=params)
@@ -143,12 +139,6 @@ def trainWithSuggestion(args, params, train):
         suggestion = wandbCarbs.suggest()
         del suggestion["suggestion_uuid"]
         print(f"Suggestion: {suggestion}")
-
-        # validate suggestion
-        if suggestion["features_fc_hidden_units"] > suggestion["lstm_hidden_units"]:
-            wandbCarbs.record_failure()
-            wandb.finish()
-            return
 
         args.train.__dict__.update(dict(suggestion))
         print(f"Training args: {args.train}")

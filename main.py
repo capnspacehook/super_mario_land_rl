@@ -245,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=4)  # not swept
     parser.add_argument("--train.cnn-filters", type=int, default=32)  # not swept
     parser.add_argument("--train.entity-id-embedding-dimensions", type=int, default=4)  # not swept
-    parser.add_argument("--train.features-fc-layers", type=int, default=2)
+    parser.add_argument("--train.features-fc-layers", type=int, default=1)
     parser.add_argument("--train.features-fc-hidden-units", type=int, default=256)
     parser.add_argument("--train.lstm-layers", type=int, default=1)  # not swept
     parser.add_argument("--train.lstm-hidden-units", type=int, default=512)

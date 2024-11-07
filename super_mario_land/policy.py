@@ -83,7 +83,6 @@ class Policy(nn.Module):
             actor.append(layer_init(nn.Linear(actorHiddenUnits, actorHiddenUnits), std=0.01))
             actor.append(activationFn())
         actor.append(layer_init(nn.Linear(actorHiddenUnits, self.nActions), std=0.01))
-        actor.append(activationFn())
         self.actor = nn.Sequential(*actor)
 
         critic = [
@@ -94,7 +93,6 @@ class Policy(nn.Module):
             critic.append(layer_init(nn.Linear(criticHiddenUnits, criticHiddenUnits), std=1))
             critic.append(activationFn())
         critic.append(layer_init(nn.Linear(criticHiddenUnits, 1), std=1))
-        critic.append(activationFn())
         self.critic = nn.Sequential(*critic)
 
     def forward(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:

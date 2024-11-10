@@ -292,10 +292,6 @@ def train(data):
                     }
                 )
 
-        if config.checkpoint_interval != 0 and data.epoch % config.checkpoint_interval == 0 or done_training:
-            save_checkpoint(data)
-            data.msg = f"Checkpoint saved at update {data.epoch}"
-
 
 def close(data):
     try:

@@ -61,7 +61,7 @@ def sweep(args, train):
         ),
         Param(name="vf_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.3),
         # rewards
-        Param(name="reward_scale", space=LogitSpace(min=0.0, max=1.0), search_center=0.004),
+        Param(name="reward_scale", space=LinearSpace(min=0.0, max=1.0, scale=0.5), search_center=0.004),
         Param(name="forward_reward", space=LinearSpace(min=0.0, max=5.0, scale=2), search_center=1.0),
         Param(name="powerup_reward", space=LinearSpace(min=0.0, max=20.0, scale=10), search_center=5.0),
         Param(name="hit_punishment", space=LinearSpace(min=-15.0, max=0.0, scale=7), search_center=-2.0),

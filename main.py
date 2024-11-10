@@ -141,25 +141,34 @@ def init_wandb(args, name, id=None, resume=True):
     return wandb
 
 
-def eval_policy(env: pufferlib.vector.Serial, policy, device, data=None, bestEval: float = None):
+def eval_policy(
+    env: pufferlib.vector.Serial, policy, device, data=None, bestEval: float = None, printInfo=False
+):
     steps = 0
     totalReward = 0.0
 
     state = None
     ob, _ = env.reset()
+    driver = env.driver_env.env
     while True:
         with th.no_grad():
             ob = th.from_numpy(ob).to(device)
             if hasattr(policy, "lstm"):
-                action, _, state = policy.policy(ob, state)
+                actions, value, state = policy.policy(ob, state)
             else:
-                action, _ = policy.policy(ob)
+                actions, value = policy.policy(ob)
 
-            action = th.argmax(action).cpu().numpy().reshape(env.action_space.shape)
+            action = th.argmax(actions).cpu().numpy().reshape(env.action_space.shape)
 
+        driver.recorder.setPolicyOutputs(float(value))
         ob, reward, done, trunc, info = env.step(action)
         totalReward += reward
         steps += 1
+
+        if printInfo:
+            action_probs = actions.cpu().numpy().tolist()[0]
+            action_probs = [round(prob, 1) for prob in action_probs]
+            print(reward[0], action[0], action_probs, float(value))
 
         if done or trunc:
             break
@@ -312,7 +321,9 @@ if __name__ == "__main__":
     elif args.mode in ("eval", "evaluate"):
         try:
             env = pufferlib.vector.make(
-                createSMLEnv, env_args=(args.train,), env_kwargs=dict(render=args.render)
+                createSMLEnv,
+                env_args=(args.train,),
+                env_kwargs=dict(render=args.render, isEval=True, isInteractiveEval=True),
             )
 
             if args.eval_model_path is None:
@@ -320,7 +331,7 @@ if __name__ == "__main__":
             else:
                 policy = th.load(args.eval_model_path, map_location=args.train.device)
 
-            info = eval_policy(env, policy, args.train.device)
+            info = eval_policy(env, policy, args.train.device, printInfo=True)
             print(info)
         except KeyboardInterrupt:
             os._exit(0)

@@ -130,15 +130,9 @@ class MarioLandEnv(Env):
     def _initSpaces(self):
         self.actions = [
             [WindowEvent.PASS],
-            [WindowEvent.PRESS_ARROW_LEFT],
-            [WindowEvent.PRESS_ARROW_RIGHT],
-            [WindowEvent.PRESS_BUTTON_B],
             [WindowEvent.PRESS_BUTTON_A],
-            [WindowEvent.PRESS_BUTTON_B, WindowEvent.PRESS_BUTTON_A],
             [WindowEvent.PRESS_ARROW_LEFT, WindowEvent.PRESS_BUTTON_B],
             [WindowEvent.PRESS_ARROW_RIGHT, WindowEvent.PRESS_BUTTON_B],
-            [WindowEvent.PRESS_ARROW_LEFT, WindowEvent.PRESS_BUTTON_A],
-            [WindowEvent.PRESS_ARROW_RIGHT, WindowEvent.PRESS_BUTTON_A],
             [
                 WindowEvent.PRESS_ARROW_LEFT,
                 WindowEvent.PRESS_BUTTON_B,

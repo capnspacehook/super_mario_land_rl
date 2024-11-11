@@ -160,15 +160,16 @@ def eval_policy(
 
             action = th.argmax(actions).cpu().numpy().reshape(env.action_space.shape)
 
-        driver.recorder.setPolicyOutputs(float(value))
+        action_probs = actions.cpu().numpy().tolist()
+        value = float(value)
+        driver.recorder.setPolicyOutputs(action_probs, value)
+
         ob, reward, done, trunc, info = env.step(action)
         totalReward += reward
         steps += 1
 
         if printInfo:
-            action_probs = actions.cpu().numpy().tolist()[0]
-            action_probs = [round(prob, 1) for prob in action_probs]
-            print(reward[0], action[0], action_probs, float(value))
+            print(reward[0], action[0], action_probs, value)
 
         if done or trunc:
             break
@@ -228,7 +229,7 @@ if __name__ == "__main__":
     parser.add_argument("--train.torch-deterministic", action="store_true")
     parser.add_argument("--train.cpu-offload", action="store_true")
     parser.add_argument("--train.device", type=str, default="cuda" if th.cuda.is_available() else "cpu")
-    parser.add_argument("--train.total-timesteps", type=int, default=200_000_000)
+    parser.add_argument("--train.total-timesteps", type=int, default=100_000_000)
     parser.add_argument("--train.checkpoint-interval", type=int, default=0)
     parser.add_argument("--train.eval-interval", type=int, default=1_000_000)
     parser.add_argument("--train.compile", action="store_true")
@@ -251,32 +252,32 @@ if __name__ == "__main__":
     parser.add_argument("--train.vf-coef", type=float, default=0.3630041672396997)
     parser.add_argument("--train.target-kl", type=float, default=0.2)  # not swept
 
-    parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=4)  # not swept
-    parser.add_argument("--train.cnn-filters", type=int, default=32)  # not swept
-    parser.add_argument("--train.entity-id-embedding-dimensions", type=int, default=4)  # not swept
+    parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=4)
+    parser.add_argument("--train.cnn-filters", type=int, default=32)
+    parser.add_argument("--train.entity-id-embedding-dimensions", type=int, default=4)
     parser.add_argument("--train.features-fc-layers", type=int, default=1)
     parser.add_argument("--train.features-fc-hidden-units", type=int, default=256)
-    parser.add_argument("--train.lstm-layers", type=int, default=1)  # not swept
+    parser.add_argument("--train.lstm-layers", type=int, default=1)
     parser.add_argument("--train.lstm-hidden-units", type=int, default=512)
     parser.add_argument("--train.actor-layers", type=int, default=1)
     parser.add_argument("--train.actor-hidden-units", type=int, default=512)
     parser.add_argument("--train.critic-layers", type=int, default=1)
     parser.add_argument("--train.critic-hidden-units", type=int, default=512)
 
-    parser.add_argument("--train.reward-scale", type=float, default=0.0022504786371276824)
-    parser.add_argument("--train.forward-reward", type=float, default=2.380733907222748)
+    parser.add_argument("--train.reward-scale", type=float, default=0.004)
+    parser.add_argument("--train.forward-reward", type=float, default=1.0)
     parser.add_argument("--train.progress-reward", type=float, default=0.0)
     parser.add_argument("--train.backwards-punishment", type=float, default=0.0)
-    parser.add_argument("--train.powerup-reward", type=float, default=7.641769647598267)
-    parser.add_argument("--train.hit-punishment", type=float, default=-4.574222564697266)
-    parser.add_argument("--train.heart-reward", type=float, default=11.48508906364441)
-    parser.add_argument("--train.moving-platform-x-reward", type=float, default=0.16488142311573029)
-    parser.add_argument("--train.moving-platform-y-reward", type=float, default=1.0956071615219116)
-    parser.add_argument("--train.clear-level-reward", type=float, default=21.28559648990631)
-    parser.add_argument("--train.death-punishment", type=float, default=-33.48751664161682)
-    parser.add_argument("--train.game-over-punishment", type=float, default=-46.881105331669914)
-    parser.add_argument("--train.coin-reward", type=float, default=0.4364973306655884)
-    parser.add_argument("--train.score-reward", type=float, default=0.010005776927778072)
+    parser.add_argument("--train.powerup-reward", type=float, default=7.5)
+    parser.add_argument("--train.hit-punishment", type=float, default=-2.0)
+    parser.add_argument("--train.heart-reward", type=float, default=10.0)
+    parser.add_argument("--train.moving-platform-x-reward", type=float, default=0.15)
+    parser.add_argument("--train.moving-platform-y-reward", type=float, default=1.25)
+    parser.add_argument("--train.clear-level-reward", type=float, default=15)
+    parser.add_argument("--train.death-punishment", type=float, default=-15)
+    parser.add_argument("--train.game-over-punishment", type=float, default=-20)
+    parser.add_argument("--train.coin-reward", type=float, default=2.0)
+    parser.add_argument("--train.score-reward", type=float, default=0.01)
     parser.add_argument("--train.clock-punishment", type=float, default=0.0)
 
     parser.add_argument(

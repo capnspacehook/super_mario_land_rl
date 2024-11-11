@@ -44,12 +44,12 @@ class Recorder:
         self.cur_step = 0
         self.action_probs = []
         self.value = 0.0
-        self.cur_reward = 0
-        self.last_reward = 0
+        self.cur_reward = 0.0
+        self.last_reward = 0.0
 
-    def setPolicyOutputs(self, value: float):  # action_probs: List[float],
-        # self.action_probs = action_probs
-        # self.action_probs = [round(prob, 1) for prob in action_probs[0]]
+    def setPolicyOutputs(self, action_probs: List[Any], value: float):
+        probStrs = [str(round(prob, 1)) for prob in action_probs[0]]
+        self.action_probs = ", ".join(probStrs)
         self.value = value
 
     def recordStep(self, render: Callable[[], Any], action: int, reward: float):
@@ -71,7 +71,7 @@ class Recorder:
         draw = ImageDraw.Draw(frame)
         draw.text((0, 17), f"ACTION: {actionText[:-2]}", (0, 102, 255), self.font)
         draw.text((0, 30), f"REWARD: {round(self.last_reward, 6)}", (0, 102, 255), self.font)
-        # draw.text((0, 37), f"ACTION PROBS: {self.action_probs}", (0, 102, 255), self.font)
+        # draw.text((0, 43), f"PROBS: {self.action_probs}", (0, 102, 255), self.font)
         draw.text((0, 43), f"VALUE: {round(self.value, 6)}", (0, 102, 255), self.font)
         self.frames.append(np.array(frame))
 
@@ -95,5 +95,7 @@ class Recorder:
         self.frames = []
         self.count_episode = 0
         self.cur_step = 0
-        self.cur_reward = 0
-        self.last_reward = 0
+        self.action_probs = []
+        self.value = 0.0
+        self.cur_reward = 0.0
+        self.last_reward = 0.0

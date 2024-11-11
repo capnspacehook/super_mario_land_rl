@@ -1,4 +1,4 @@
-from math import ceil, floor, log, log2, sqrt
+from math import ceil, floor, log, log2
 import logging
 import os
 import subprocess
@@ -20,20 +20,21 @@ class CustomWandbCarbs(WandbCarbs):
         super().__init__(carbs, wandb_run)
 
     def _transform_suggestion(self, suggestion):
-        suggestion["bptt_horizon"] = closest_power(suggestion["bptt_horizon"])
+        print(f"Suggestion pre-transformation: {suggestion}")
 
-        suggestion["game_over_punishment"] = (
-            suggestion["death_punishment"] * suggestion["game_over_punishment"]
-        )
+        suggestion["batch_size"] = 2 ** suggestion["batch_size"]
+        suggestion["bptt_horizon"] = 2 ** suggestion["bptt_horizon"]
+
+        suggestion["total_timesteps"] = max(suggestion["total_timesteps"], 50_000_000)
+        suggestion["update_epochs"] = min(suggestion["update_epochs"], 4)
 
         return suggestion
 
     def _suggestion_from_run(self, run):
         suggestion = super()._suggestion_from_run(run)
 
-        suggestion["game_over_punishment"] = (
-            suggestion["game_over_punishment"] / suggestion["death_punishment"]
-        )
+        suggestion["batch_size"] = int(log2(suggestion["batch_size"]))
+        suggestion["bptt_horizon"] = int(log2(suggestion["bptt_horizon"]))
 
         return suggestion
 
@@ -43,36 +44,37 @@ def sweep(args, train):
         Param(
             name="total_timesteps",
             space=LinearSpace(min=20_000_000, scale=50_000_000, rounding_factor=1_000_000, is_integer=True),
-            search_center=30_000_000,
+            search_center=20_000_000,
         ),
         # hyperparams
         Param(
-            name="bptt_horizon",
-            space=LinearSpace(min=2, scale=50, is_integer=True),
+            name="batch_size",
+            space=LinearSpace(min=16, max=17, scale=1, is_integer=True),
             search_center=16,
         ),
+        Param(
+            name="bptt_horizon",
+            space=LinearSpace(min=4, max=8, scale=3, is_integer=True),
+            search_center=5,
+        ),
         Param(name="ent_coef", space=LogSpace(scale=0.7), search_center=0.0075),
-        Param(name="gae_lambda", space=LogitSpace(min=0.0, max=1.0, scale=1.5), search_center=0.95),
-        Param(name="gamma", space=LogitSpace(min=0.0, max=1.0, scale=1.5), search_center=0.99),
+        Param(name="gae_lambda", space=LogitSpace(min=0.0, max=1.0), search_center=0.95),
+        Param(name="gamma", space=LogitSpace(min=0.0, max=1.0), search_center=0.99),
         Param(name="learning_rate", space=LogSpace(scale=0.7), search_center=0.0001),
         Param(name="max_grad_norm", space=LinearSpace(min=0.0, scale=2.0), search_center=1.0),
         Param(
-            name="update_epochs", space=LinearSpace(min=1, max=10, scale=3, is_integer=True), search_center=5
+            name="update_epochs", space=LinearSpace(min=1, max=5, scale=3, is_integer=True), search_center=3
         ),
         Param(name="vf_coef", space=LogitSpace(min=0.0, max=1.0), search_center=0.3),
         # rewards
-        Param(name="reward_scale", space=LinearSpace(min=0.0, max=1.0, scale=0.5), search_center=0.004),
-        Param(name="forward_reward", space=LinearSpace(min=0.0, max=5.0, scale=2), search_center=1.0),
-        Param(name="powerup_reward", space=LinearSpace(min=0.0, max=20.0, scale=10), search_center=5.0),
-        Param(name="hit_punishment", space=LinearSpace(min=-15.0, max=0.0, scale=7), search_center=-2.0),
-        Param(name="heart_reward", space=LinearSpace(min=0.0, max=30.0, scale=10), search_center=10.0),
-        Param(name="moving_platform_x_reward", space=LinearSpace(min=0.0, max=2.0), search_center=0.15),
-        Param(name="moving_platform_y_reward", space=LinearSpace(min=0.0, max=3.0), search_center=1.25),
-        Param(name="clear_level_reward", space=LinearSpace(min=0.0, max=50.0, scale=10), search_center=15.0),
-        Param(name="death_punishment", space=LinearSpace(min=-50.0, max=0.0, scale=10), search_center=-15.0),
-        Param(name="game_over_punishment", space=LinearSpace(min=1.0, max=2.0, scale=0.5), search_center=1.0),
-        Param(name="coin_reward", space=LinearSpace(min=0.0, max=5.0, scale=2), search_center=2.0),
-        Param(name="score_reward", space=LogSpace(), search_center=0.01),
+        # Param(name="forward_reward", space=LinearSpace(min=0.0, max=5.0, scale=2), search_center=1.0),
+        # Param(name="powerup_reward", space=LinearSpace(min=0.0, max=20.0, scale=10), search_center=5.0),
+        # Param(name="hit_punishment", space=LinearSpace(min=-15.0, max=0.0, scale=7), search_center=-2.0),
+        # Param(name="heart_reward", space=LinearSpace(min=0.0, max=30.0, scale=10), search_center=10.0),
+        # Param(name="clear_level_reward", space=LinearSpace(min=0.0, max=50.0, scale=10), search_center=15.0),
+        # Param(name="death_punishment", space=LinearSpace(min=-50.0, max=0.0, scale=10), search_center=-15.0),
+        # Param(name="coin_reward", space=LinearSpace(min=0.0, max=5.0), search_center=2.0),
+        # Param(name="score_reward", space=LogSpace(), search_center=0.01),
     ]
 
     sweepID = args.wandb_sweep
@@ -122,13 +124,13 @@ def trainWithSuggestion(args, params, train):
             max_suggestion_cost=14400,  # 4h
             num_random_samples=len(params),
             initial_search_radius=0.5,
-            num_candidates_for_suggestion_per_dim=50,
+            num_candidates_for_suggestion_per_dim=100,
             wandb_params=WandbLoggingParams(root_dir="wandb"),
         )
         carbs = CARBS(config=config, params=params)
 
         wandbCarbs = CustomWandbCarbs(carbs=carbs)
-        resampling = carbs.config.resample_frequency > 0 and len(carbs.success_observations) > (
+        resampling = not carbs._is_random_sampling() and len(carbs.success_observations) > (
             (carbs.resample_count + 1) * carbs.config.resample_frequency
         )
         print(
@@ -141,6 +143,7 @@ def trainWithSuggestion(args, params, train):
         print(f"Suggestion: {suggestion}")
 
         args.train.__dict__.update(dict(suggestion))
+        args.train.minibatch_size = args.train.batch_size // 4
         print(f"Training args: {args.train}")
 
         stopEarlyFunc = None
@@ -160,12 +163,11 @@ def trainWithSuggestion(args, params, train):
         return
 
     totalTime = time.time() - startTime
-    runScore = 0
+    bestEval = 0
     if len(evalInfos) != 0:
-        bestEval = max(evalInfos, key=lambda i: i["progress"])
-        runScore = bestEval["progress"] + (100 / sqrt(bestEval["length"]))
+        bestEval = max(evalInfos, key=lambda i: i["progress"])["progress"]
 
-    wandbCarbs.record_observation(objective=runScore, cost=totalTime)
+    wandbCarbs.record_observation(objective=bestEval, cost=totalTime)
     wandb.finish()
 
 

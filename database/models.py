@@ -14,7 +14,7 @@ class Cell:
     action: Optional[int]
     max_no_ops: Optional[int]
     initial: bool
-    section: str
+    section_index: int
     visits: int
     invalid: bool
     state: memoryview
@@ -30,4 +30,10 @@ class CellScore:
 @dataclasses.dataclass()
 class MaxSection:
     id: int
-    section: Optional[str]
+    section_index: Optional[int]
+
+
+@dataclasses.dataclass()
+class Section:
+    name: str
+    index: int

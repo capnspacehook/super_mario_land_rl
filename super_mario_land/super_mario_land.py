@@ -34,6 +34,7 @@ worldToNextLevelState = {
     (3, 2): 14,
     (3, 3): 16,
     (4, 1): 18,
+    (4, 2): 0,
 }
 
 
@@ -87,11 +88,12 @@ class MarioLandEnv(Env):
         self.forwardRewardCoef = config.forward_reward
         self.progressRewardCoef = config.progress_reward
         self.backwardsPunishmentCoef = config.backwards_punishment
+        self.waitReward = 0.25
         self.powerupReward = config.powerup_reward
         self.hitPunishment = config.hit_punishment
         self.heartReward = config.heart_reward
-        self.movingPlatformXRewardCoef = self.forwardRewardCoef * 0.15
-        self.movingPlatformYRewardCoef = self.forwardRewardCoef * 1.25
+        self.movingPlatformXRewardCoef = 0.5
+        self.movingPlatformYRewardCoef = 2
         self.levelClearReward = config.clear_level_reward
         self.levelClearTopReward = self.levelClearReward / 5
         self.levelClearLivesRewardCoef = self.levelClearReward / 10
@@ -103,13 +105,15 @@ class MarioLandEnv(Env):
         self.coinReward = config.coin_reward
         self.scoreRewardCoef = config.score_reward
         self.clockPunishment = config.clock_punishment
-        self.boulderReward = self.forwardRewardCoef * 3
-        self.hitBossReward = self.forwardRewardCoef * 1.5
-        self.killBossReward = self.hitBossReward * 2
+        self.boulderReward = config.boulder_reward
+        self.hitBossReward = 1.5
+        self.killBossReward = 2.0
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
+
+        self._initLevelOrder()
 
         self._initDB()
 
@@ -192,6 +196,14 @@ class MarioLandEnv(Env):
             button: r_button for button, r_button in zip(self._buttons, self._buttons_release)
         }
 
+    def _initLevelOrder(self):
+        # arrange the levels to be trained on in order of what level
+        # is to be trained on first
+        self.levelOrder = ["1-1", "1-2", "1-3", "2-1", "2-2", "3-1", "3-2", "3-3", "4-1", "4-2"]
+        maxLevel = self.levelOrder.index(MAX_START_LEVEL)
+        for _ in range(maxLevel):
+            self.levelOrder.append(self.levelOrder.pop(0))
+
     def _initDB(self):
         engine = create_engine("postgresql+psycopg://postgres:password@localhost/postgres")
         self.stateManager = StateManager(engine)
@@ -205,6 +217,9 @@ class MarioLandEnv(Env):
         # delete existing cells and cell scores from a previous run
         self.stateManager.delete_cells_and_cell_scores()
 
+        for idx, name in enumerate(self.levelOrder):
+            self.stateManager.insert_section(name, idx)
+
         # create cells from beginning of every level
         for i in range(0, 20, 2):
             stateFile = self.stateFiles[i]
@@ -216,15 +231,17 @@ class MarioLandEnv(Env):
                     return
 
                 levelName = f"{curState.world[0]}-{curState.world[1]}"
+                levelIdx = self.levelOrder.index(levelName)
                 f.seek(0)
                 state = memoryview(f.read())
 
                 self.stateManager.insert_initial_cell(
-                    cellHash, hashInput, RANDOM_NOOP_FRAMES, levelName, state
+                    cellHash, hashInput, RANDOM_NOOP_FRAMES, levelIdx, state
                 )
 
         # set starting max level
-        self.stateManager.upsert_max_section(self.maxLevel)
+        maxLevelIdx = self.levelOrder.index(self.maxLevel)
+        self.stateManager.upsert_max_section(maxLevelIdx)
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
@@ -270,7 +287,8 @@ class MarioLandEnv(Env):
 
         # load new cell
         if self.isEval:
-            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell(START_LEVEL)
+            levelIdx = self.levelOrder.index(START_LEVEL)
+            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell(levelIdx)
         else:
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_random_cell()
 
@@ -466,7 +484,7 @@ class MarioLandEnv(Env):
             self.gameStateCache.append(curState)
 
     def getObservation(self) -> Any:
-        return getObservation(self.pyboy, self.gameStateCache)
+        return getObservation(self.pyboy, self.gameStateCache, self.onGroundFor == ON_GROUND_FRAMES)
 
     def step(self, actionIdx: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         # send actions
@@ -498,7 +516,7 @@ class MarioLandEnv(Env):
                 self.onGroundFor += 1
 
             # compute reward, handle dying or level completion
-            reward = self.reward(curState) * self.rewardScale
+            reward = self.reward(actions, curState) * self.rewardScale
             totalReward += reward
 
             if self.shouldRecord:
@@ -530,13 +548,13 @@ class MarioLandEnv(Env):
             info = self.info(curState)
 
         if self.isPlaytest:
-            self.printGameState(obs, totalReward, curState)
+            self.printGameState(obs, totalReward / self.rewardScale, curState)
 
         self.prevState = curState
 
         return obs, totalReward, terminated, truncated, info
 
-    def reward(self, curState: MarioLandGameState) -> float:
+    def reward(self, actions: List[int], curState: MarioLandGameState) -> float:
         # return punishment on mario's death
         if self._isDead(curState):
             self.deathCounter += 1
@@ -560,10 +578,11 @@ class MarioLandEnv(Env):
             elif curState.powerupStatus == STATUS_FIRE:
                 levelClear += self.levelClearPowerupReward
 
-            if curState.world == (4, 2):
-                return levelClear
-
             return levelClear
+
+        # the game registers mario as on the ground a couple of frames
+        # before he actually is to change his pose
+        onGround = self.onGroundFor == ON_GROUND_FRAMES
 
         # add time punishment every step to encourage speed more
         clock = self.clockPunishment
@@ -583,6 +602,10 @@ class MarioLandEnv(Env):
         elif xSpeed < 0:
             movement = -xSpeed * self.backwardsPunishmentCoef
 
+        wait = 0
+        if onGround and actions == [WindowEvent.PASS]:
+            wait = self.waitReward
+
         # reward coins increasing
         if curState.coins >= self.prevState.coins:
             collectedCoins = curState.coins - self.prevState.coins
@@ -591,17 +614,13 @@ class MarioLandEnv(Env):
         coins = (collectedCoins) * self.coinReward
         self.coinCounter += collectedCoins
 
-        # the game registers mario as on the ground a couple of frames
-        # before he actually is to change his pose
-        onGround = self.onGroundFor == ON_GROUND_FRAMES
-
         # reward standing on moving platforms if the platforms are moving
         # forward or upwards to encourage waiting on platforms until a
         # more optimal jump can be made
         movingPlatform = 0
         _, onMovingPlatform = self._standingOnMovingPlatform(curState)
         # don't reward when moving forward on a moving platform
-        if onGround and onMovingPlatform and not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]:
+        if onGround and onMovingPlatform and actions == [WindowEvent.PASS]:
             ySpeed = np.clip(curState.yPos - self.prevState.yPos, -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
             movingPlatform += max(0, xSpeed) * self.movingPlatformXRewardCoef
             movingPlatform += max(0, ySpeed) * self.movingPlatformYRewardCoef
@@ -615,7 +634,7 @@ class MarioLandEnv(Env):
             curState.world[0] == 3
             and onGround
             and xSpeed > 0
-            and not self._held_buttons[WindowEvent.PRESS_ARROW_RIGHT]
+            and actions == [WindowEvent.PASS]
             and self._standingOnTiles(bouncing_boulder_tiles)
         ):
             standingOnBoulder = self.boulderReward
@@ -665,12 +684,13 @@ class MarioLandEnv(Env):
             clock
             + progress
             + movement
-            + score
+            + wait
             + coins
             + movingPlatform
             + standingOnBoulder
             + powerup
             + heart
+            + score
             + boss
         )
 
@@ -785,11 +805,6 @@ class MarioLandEnv(Env):
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
             self.levelClearCounter += 1
 
-            if curState.world == (4, 2):
-                # the game has been completed, return so this episode can
-                # be terminated
-                return curState
-
             # load the next level directly to avoid processing
             # unnecessary frames and the AI playing levels we
             # don't want it to
@@ -837,9 +852,6 @@ class MarioLandEnv(Env):
     def truncated(self, curState: MarioLandGameState) -> bool:
         # If Mario has not moved in 10s, end the eval episode.
         # If no forward progress has been made in 20s, end the eval episode.
-        # If the level is completed end this episode so the next level
-        # isn't played twice. If 4-2 is completed end the episode, that's
-        # final normal level so there's no level to start after it.
         return (
             self.heartFarming
             or curState.hasStar  # TODO: remove once star bug has been fixed
@@ -847,7 +859,6 @@ class MarioLandEnv(Env):
                 (self.isEval and not self.isInteractiveEval)
                 and (self.evalStuck == 600 or self.evalNoProgress == 1200)
             )
-            or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
             or self.invalidLevel
         )
 
@@ -858,7 +869,8 @@ class MarioLandEnv(Env):
         if self.isEval:
             if done and self.levelStr > self.maxLevel:
                 self.maxLevel = self.levelStr
-                self.stateManager.update_max_section(self.maxLevel)
+                maxLevelIdx = self.levelOrder.index(self.maxLevel)
+                self.stateManager.update_max_section(maxLevelIdx)
             return
 
         self.cellScore += reward
@@ -902,6 +914,18 @@ class MarioLandEnv(Env):
                             unsafeState = True
                             break
 
+                        # don't save states where an enemy gets really close
+                        # to mario, agents will likely almost always die when
+                        # loading the state skewing training
+                        for obj in curState.objects:
+                            if obj.typeID in ENEMY_TYPE_IDS:
+                                x = np.array((curState.xPos, obj.xPos))
+                                y = np.array((curState.yPos, obj.yPos))
+                                distance = np.linalg.norm(x - y)
+                                if distance < EMEMY_SAFE_DISTANCE:
+                                    unsafeState = True
+                                    break
+
                     self.pyboy.load_state(state)
                     if unsafeState:
                         return
@@ -910,11 +934,11 @@ class MarioLandEnv(Env):
                     maxNOOPs = RANDOM_NOOP_FRAMES_WITH_ENEMIES
 
                 try:
-                    section = f"{curState.world[0]}-{curState.world[1]}"
+                    levelName = f"{curState.world[0]}-{curState.world[1]}"
+                    levelIdx = self.levelOrder.index(levelName)
                     self.stateManager.insert_cell(
-                        cellHash, hashInput, action, maxNOOPs, section, state.getbuffer()
+                        cellHash, hashInput, action, maxNOOPs, levelIdx, state.getbuffer()
                     )
-                    # print(f"added cell: {hashInput}")
                 except Exception as e:
                     print(e)
 

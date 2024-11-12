@@ -42,6 +42,11 @@ WHERE id IN (
 """
 
 
+DELETE_SECTIONS = """-- name: delete_sections \\:exec
+TRUNCATE sections CASCADE
+"""
+
+
 GET_CELL = """-- name: get_cell \\:one
 SELECT id, action, max_no_ops, initial, state
 FROM cells
@@ -61,7 +66,7 @@ class GetCellRow:
 GET_FIRST_CELL = """-- name: get_first_cell \\:one
 SELECT id, action, max_no_ops, initial, state
 FROM cells
-WHERE section = :p1 AND initial = TRUE
+WHERE section_index = :p1 AND initial = TRUE
 LIMIT 1
 """
 
@@ -77,7 +82,7 @@ class GetFirstCellRow:
 
 GET_RANDOM_CELL = """-- name: get_random_cell \\:one
 WITH max_section AS (
-    SELECT section AS max_section 
+    SELECT section_index AS max_section 
     FROM max_sections
     WHERE id = 1
     LIMIT 1
@@ -93,7 +98,7 @@ WITH max_section AS (
         JOIN cells AS c
         ON c.id = cs.cell_id
         CROSS JOIN max_section
-        WHERE c.section <= max_section.max_section and c.invalid = FALSE
+        WHERE c.section_index <= max_section.max_section and c.invalid = FALSE
     ) AS q
     WHERE rn <= 10
     GROUP BY cell_id
@@ -127,7 +132,7 @@ WITH max_section AS (
         ) +
         CASE
             -- add 5% of the max possible weight to cells in the current section
-            WHEN c.section = MAX(max_section.max_section) THEN 10
+            WHEN c.section_index = MAX(max_section.max_section) THEN 10
             ELSE 0 
         END AS weight
     FROM cells AS c
@@ -173,7 +178,7 @@ WHERE id = :p1
 
 INSERT_CELL = """-- name: insert_cell \\:one
 INSERT INTO cells (
-    hash, hash_input, action, max_no_ops, initial, section, state
+    hash, hash_input, action, max_no_ops, initial, section_index, state
 ) VALUES (
     :p1, :p2, :p3, :p4, :p5, :p6, :p7
 )
@@ -191,6 +196,12 @@ INSERT INTO cell_scores (
 """
 
 
+INSERT_SECTION = """-- name: insert_section \\:exec
+INSERT INTO sections (name, index)
+VALUES (:p1, :p2)
+"""
+
+
 SET_CELL_INVALID = """-- name: set_cell_invalid \\:exec
 UPDATE cells
 SET invalid = TRUE
@@ -200,16 +211,16 @@ where id = :p1
 
 UPDATE_MAX_SECTION = """-- name: update_max_section \\:exec
 UPDATE max_sections
-SET section = :p1
+SET section_index = :p1
 WHERE id = 1
 """
 
 
 UPSERT_MAX_SECTION = """-- name: upsert_max_section \\:exec
-INSERT INTO max_sections (id, section)
+INSERT INTO max_sections (id, section_index)
 VALUES (1, :p1)
 ON CONFLICT (id) DO UPDATE
-SET section = :p1
+SET section_index = :p1
 """
 
 
@@ -229,6 +240,9 @@ class Querier:
     def delete_old_cell_scores(self) -> None:
         self._conn.execute(sqlalchemy.text(DELETE_OLD_CELL_SCORES))
 
+    def delete_sections(self) -> None:
+        self._conn.execute(sqlalchemy.text(DELETE_SECTIONS))
+
     def get_cell(self, *, id: int) -> Optional[GetCellRow]:
         row = self._conn.execute(sqlalchemy.text(GET_CELL), {"p1": id}).first()
         if row is None:
@@ -241,8 +255,8 @@ class Querier:
             state=row[4],
         )
 
-    def get_first_cell(self, *, section: str) -> Optional[GetFirstCellRow]:
-        row = self._conn.execute(sqlalchemy.text(GET_FIRST_CELL), {"p1": section}).first()
+    def get_first_cell(self, *, section_index: int) -> Optional[GetFirstCellRow]:
+        row = self._conn.execute(sqlalchemy.text(GET_FIRST_CELL), {"p1": section_index}).first()
         if row is None:
             return None
         return GetFirstCellRow(
@@ -268,14 +282,14 @@ class Querier:
     def increment_cell_visit(self, *, id: int) -> None:
         self._conn.execute(sqlalchemy.text(INCREMENT_CELL_VISIT), {"p1": id})
 
-    def insert_cell(self, *, hash: str, hash_input: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, section: str, state: memoryview) -> Optional[int]:
+    def insert_cell(self, *, hash: str, hash_input: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, section_index: int, state: memoryview) -> Optional[int]:
         row = self._conn.execute(sqlalchemy.text(INSERT_CELL), {
             "p1": hash,
             "p2": hash_input,
             "p3": action,
             "p4": max_no_ops,
             "p5": initial,
-            "p6": section,
+            "p6": section_index,
             "p7": state,
         }).first()
         if row is None:
@@ -285,11 +299,14 @@ class Querier:
     def insert_cell_score(self, *, cell_id: int, score: decimal.Decimal) -> None:
         self._conn.execute(sqlalchemy.text(INSERT_CELL_SCORE), {"p1": cell_id, "p2": score})
 
+    def insert_section(self, *, name: str, index: int) -> None:
+        self._conn.execute(sqlalchemy.text(INSERT_SECTION), {"p1": name, "p2": index})
+
     def set_cell_invalid(self, *, id: int) -> None:
         self._conn.execute(sqlalchemy.text(SET_CELL_INVALID), {"p1": id})
 
-    def update_max_section(self, *, section: Optional[str]) -> None:
-        self._conn.execute(sqlalchemy.text(UPDATE_MAX_SECTION), {"p1": section})
+    def update_max_section(self, *, section_index: Optional[int]) -> None:
+        self._conn.execute(sqlalchemy.text(UPDATE_MAX_SECTION), {"p1": section_index})
 
-    def upsert_max_section(self, *, section: Optional[str]) -> None:
-        self._conn.execute(sqlalchemy.text(UPSERT_MAX_SECTION), {"p1": section})
+    def upsert_max_section(self, *, section_index: Optional[int]) -> None:
+        self._conn.execute(sqlalchemy.text(UPSERT_MAX_SECTION), {"p1": section_index})

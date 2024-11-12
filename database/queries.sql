@@ -1,15 +1,22 @@
 -- name: DeleteCellsAndCellScores :exec
 TRUNCATE cells CASCADE;
 
+-- name: DeleteSections :exec
+TRUNCATE sections CASCADE;
+
+-- name: InsertSection :exec
+INSERT INTO sections (name, index)
+VALUES ($1, $2);
+
 -- name: UpsertMaxSection :exec
-INSERT INTO max_sections (id, section)
+INSERT INTO max_sections (id, section_index)
 VALUES (1, $1)
 ON CONFLICT (id) DO UPDATE
-SET section = $1;
+SET section_index = $1;
 
 -- name: UpdateMaxSection :exec
 UPDATE max_sections
-SET section = $1
+SET section_index = $1
 WHERE id = 1;
 
 -- name: CellExists :one
@@ -21,7 +28,7 @@ SELECT EXISTS(
 
 -- name: GetRandomCell :one
 WITH max_section AS (
-    SELECT section AS max_section 
+    SELECT section_index AS max_section 
     FROM max_sections
     WHERE id = 1
     LIMIT 1
@@ -37,7 +44,7 @@ WITH max_section AS (
         JOIN cells AS c
         ON c.id = cs.cell_id
         CROSS JOIN max_section
-        WHERE c.section <= max_section.max_section and c.invalid = FALSE
+        WHERE c.section_index <= max_section.max_section and c.invalid = FALSE
     ) AS q
     WHERE rn <= 10
     GROUP BY cell_id
@@ -71,7 +78,7 @@ WITH max_section AS (
         ) +
         CASE
             -- add 5% of the max possible weight to cells in the current section
-            WHEN c.section = MAX(max_section.max_section) THEN 10
+            WHEN c.section_index = MAX(max_section.max_section) THEN 10
             ELSE 0 
         END AS weight
     FROM cells AS c
@@ -100,7 +107,7 @@ JOIN rand_id AS ri ON ri.id = c.id WHERE c.id = ri.id;
 -- name: GetFirstCell :one
 SELECT id, action, max_no_ops, initial, state
 FROM cells
-WHERE section = $1 AND initial = TRUE
+WHERE section_index = $1 AND initial = TRUE
 LIMIT 1;
 
 -- name: GetCell :one
@@ -110,7 +117,7 @@ WHERE id = $1;
 
 -- name: InsertCell :one
 INSERT INTO cells (
-    hash, hash_input, action, max_no_ops, initial, section, state
+    hash, hash_input, action, max_no_ops, initial, section_index, state
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7
 )

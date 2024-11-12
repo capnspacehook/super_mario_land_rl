@@ -84,7 +84,6 @@ def train(args, shouldStopEarly=None):
         zero_copy=args.vec.zero_copy,
         backend=backend,
     )
-    # vecenv = VecRunningMean(vecenv, gamma=args.train.gamma)
     policy = make_policy(vecenv.driver_env, args.train).to(args.train.device)
 
     data = clean_pufferl.create(args.train, vecenv, policy, wandb=args.wandb)
@@ -229,27 +228,27 @@ if __name__ == "__main__":
     parser.add_argument("--train.torch-deterministic", action="store_true")
     parser.add_argument("--train.cpu-offload", action="store_true")
     parser.add_argument("--train.device", type=str, default="cuda" if th.cuda.is_available() else "cpu")
-    parser.add_argument("--train.total-timesteps", type=int, default=100_000_000)
+    parser.add_argument("--train.total-timesteps", type=int, default=200_000_000)
     parser.add_argument("--train.checkpoint-interval", type=int, default=0)
     parser.add_argument("--train.eval-interval", type=int, default=1_000_000)
     parser.add_argument("--train.compile", action="store_true")
     parser.add_argument("--train.compile-mode", type=str, default="reduce-overhead")
 
     parser.add_argument("--train.batch-size", type=int, default=65_536)  # not swept
-    parser.add_argument("--train.bptt-horizon", type=int, default=32)
+    parser.add_argument("--train.bptt-horizon", type=int, default=16)
     parser.add_argument("--train.clip-coef", type=float, default=0.2)  # not swept
     parser.add_argument("--train.clip-vloss", action="store_false")
-    parser.add_argument("--train.ent-coef", type=float, default=0.00586307613909554)
-    parser.add_argument("--train.gae-lambda", type=float, default=0.9652185299134082)
-    parser.add_argument("--train.gamma", type=float, default=0.985157880813546)
-    parser.add_argument("--train.learning-rate", type=float, default=0.00025514449556214103)
+    parser.add_argument("--train.ent-coef", type=float, default=0.0103695360320701)
+    parser.add_argument("--train.gae-lambda", type=float, default=0.7897462671911262)
+    parser.add_argument("--train.gamma", type=float, default=0.99)
+    parser.add_argument("--train.learning-rate", type=float, default=0.0008491435467418811)
     parser.add_argument("--train.anneal-lr", action="store_true")
-    parser.add_argument("--train.max-grad-norm", type=float, default=0.9973977506160736)
+    parser.add_argument("--train.max-grad-norm", type=float, default=0.6716405153274536)
     parser.add_argument("--train.minibatch-size", type=int, default=16_384)  # not swept
     parser.add_argument("--train.norm-adv", action="store_false")
-    parser.add_argument("--train.update-epochs", type=int, default=5)
+    parser.add_argument("--train.update-epochs", type=int, default=4)
     parser.add_argument("--train.vf-clip-coef", type=float, default=0.1)  # not swept
-    parser.add_argument("--train.vf-coef", type=float, default=0.3630041672396997)
+    parser.add_argument("--train.vf-coef", type=float, default=0.9445425476353746)
     parser.add_argument("--train.target-kl", type=float, default=0.2)  # not swept
 
     parser.add_argument("--train.game-area-embedding-dimensions", type=int, default=4)
@@ -273,11 +272,12 @@ if __name__ == "__main__":
     parser.add_argument("--train.heart-reward", type=float, default=10.0)
     parser.add_argument("--train.moving-platform-x-reward", type=float, default=0.15)
     parser.add_argument("--train.moving-platform-y-reward", type=float, default=1.25)
+    parser.add_argument("--train.boulder_reward", type=float, default=5)
     parser.add_argument("--train.clear-level-reward", type=float, default=15)
     parser.add_argument("--train.death-punishment", type=float, default=-15)
     parser.add_argument("--train.game-over-punishment", type=float, default=-20)
     parser.add_argument("--train.coin-reward", type=float, default=2.0)
-    parser.add_argument("--train.score-reward", type=float, default=0.01)
+    parser.add_argument("--train.score-reward", type=float, default=0.005)
     parser.add_argument("--train.clock-punishment", type=float, default=0.0)
 
     parser.add_argument(

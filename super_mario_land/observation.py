@@ -13,10 +13,11 @@ from super_mario_land.settings import *
 def getObservation(
     pyboy: PyBoy,
     states: Deque[MarioLandGameState],
+    onGround: bool,
 ) -> Dict[str, Any]:
     gameArea = getGameArea(pyboy, states[-1])
     marioInfo, entityIDs, entityInfos = getEntityIDsAndInfo(states)
-    scalar = getScalarFeatures(states[-1])
+    scalar = getScalarFeatures(states[-1], onGround)
 
     return {
         GAME_AREA_OBS: gameArea,
@@ -172,14 +173,14 @@ def calculateMeanSpeeds(
     return np.mean(rawXSpeeds), np.mean(rawYSpeeds)
 
 
-# TODO: add is in air or not, maybe to mario obs?
-def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
+def getScalarFeatures(curState: MarioLandGameState, onGround: bool) -> np.ndarray:
     return np.array(
         np.concatenate(
             (
                 oneHotEncoding(curState.powerupStatus, POWERUP_STATUSES),
                 np.array(
                     [
+                        float(onGround),
                         float(curState.hasStar),
                         scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True),
                         scaledEncoding(curState.livesLeft, 99, True),

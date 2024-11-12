@@ -247,6 +247,7 @@ worldTilesets = {
 def getGameArea(pyboy: PyBoy, curState: MarioLandGameState) -> np.ndarray:
     gameArea = pyboy.game_area()
     gameArea = np.asarray(gameArea, dtype=np.uint8)
+    # TODO: reenable
     # if curState.isInvincible:
     #     _drawMario(pyboy, gameArea)
 

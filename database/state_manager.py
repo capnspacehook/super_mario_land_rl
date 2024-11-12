@@ -22,6 +22,13 @@ class StateManager(object):
         with self.engine.connect() as conn:
             q = Querier(conn)
             q.delete_cells_and_cell_scores()
+            q.delete_sections()
+            conn.commit()
+
+    def insert_section(self, name: str, index: int):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.insert_section(name=name, index=index)
             conn.commit()
 
     def cell_exists(self, hash: str) -> bool:
@@ -30,7 +37,7 @@ class StateManager(object):
             return q.cell_exists(hash=hash)
 
     def insert_initial_cell(
-        self, hash: str, hash_input: str, max_no_ops: int | None, section: str, state: memoryview
+        self, hash: str, hash_input: str, max_no_ops: int | None, section_index: int, state: memoryview
     ):
         with self.engine.connect() as conn:
             q = Querier(conn)
@@ -40,7 +47,7 @@ class StateManager(object):
                 action=None,
                 max_no_ops=max_no_ops,
                 initial=True,
-                section=section,
+                section_index=section_index,
                 state=state,
             )
             if id is None:
@@ -49,7 +56,13 @@ class StateManager(object):
             conn.commit()
 
     def insert_cell(
-        self, hash: str, hash_input: str, action: int, max_no_ops: int | None, section: str, state: memoryview
+        self,
+        hash: str,
+        hash_input: str,
+        action: int,
+        max_no_ops: int | None,
+        section_index: int,
+        state: memoryview,
     ):
         with self.engine.connect() as conn:
             q = Querier(conn)
@@ -59,7 +72,7 @@ class StateManager(object):
                 action=action,
                 max_no_ops=max_no_ops,
                 initial=False,
-                section=section,
+                section_index=section_index,
                 state=state,
             )
             if id is None:
@@ -67,16 +80,16 @@ class StateManager(object):
             q.insert_cell_score(cell_id=id, score=decimal.Decimal(0))
             conn.commit()
 
-    def upsert_max_section(self, section: str):
+    def upsert_max_section(self, section_index: int):
         with self.engine.connect() as conn:
             q = Querier(conn)
-            q.upsert_max_section(section=section)
+            q.upsert_max_section(section_index=section_index)
             conn.commit()
 
-    def update_max_section(self, section: str):
+    def update_max_section(self, section_index: int):
         with self.engine.connect() as conn:
             q = Querier(conn)
-            q.update_max_section(section=section)
+            q.update_max_section(section_index=section_index)
             conn.commit()
 
     def get_random_cell(self) -> Tuple[int, int, int, bool, memoryview]:
@@ -87,10 +100,10 @@ class StateManager(object):
                 result = q.get_first_cell()
             return result.id, result.action, result.max_no_ops, result.initial, result.state
 
-    def get_first_cell(self, section: str) -> Tuple[int, int, int, bool, memoryview]:
+    def get_first_cell(self, section_index: int) -> Tuple[int, int, int, bool, memoryview]:
         with self.engine.connect() as conn:
             q = Querier(conn)
-            result = q.get_first_cell(section=section)
+            result = q.get_first_cell(section_index=section_index)
             return result.id, result.action, result.max_no_ops, result.initial, result.state
 
     def record_score(self, cell_id: int, score: float):

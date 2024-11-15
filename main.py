@@ -186,14 +186,14 @@ def eval_policy(
             }
         )
 
+        score = info["progress"] + (100 / sqrt(steps))
+        if bestEval is not None and score >= bestEval:
+            bestEval = score
+            clean_pufferl.save_checkpoint(data)
+            data.msg = f"Checkpoint saved at update {data.epoch} for new best eval {bestEval}"
+
     info["reward"] = totalReward
     info["length"] = steps
-
-    score = info["progress"] + (100 / sqrt(steps))
-    if bestEval is not None and score >= bestEval:
-        bestEval = score
-        clean_pufferl.save_checkpoint(data)
-        data.msg = f"Checkpoint saved at update {data.epoch} for new best eval {bestEval}"
 
     return info, bestEval
 

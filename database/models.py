@@ -24,7 +24,27 @@ class Cell:
 class CellScore:
     id: int
     cell_id: int
+    epoch: int
     score: decimal.Decimal
+    placeholder: bool
+
+
+@dataclasses.dataclass()
+class CellScoreMetric:
+    id: int
+    epoch: int
+    cell_id: int
+    min_score: decimal.Decimal
+    max_score: decimal.Decimal
+    mean_score: decimal.Decimal
+    std_score: decimal.Decimal
+    visits: int
+
+
+@dataclasses.dataclass()
+class Epoch:
+    id: int
+    epoch: Optional[int]
 
 
 @dataclasses.dataclass()

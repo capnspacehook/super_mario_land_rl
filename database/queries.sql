@@ -19,6 +19,17 @@ UPDATE max_sections
 SET section_index = $1
 WHERE id = 1;
 
+-- name: UpsertEpoch :exec
+INSERT INTO epochs (id, epoch)
+VALUES (1, 0)
+ON CONFLICT (id) DO UPDATE
+SET epoch = 0;
+
+-- name: IncrementEpoch :exec
+UPDATE epochs
+SET epoch = epoch + 1
+WHERE id = 1;
+
 -- name: CellExists :one
 SELECT EXISTS(
     SELECT 1
@@ -44,7 +55,7 @@ WITH max_section AS (
         JOIN cells AS c
         ON c.id = cs.cell_id
         CROSS JOIN max_section
-        WHERE c.section_index <= max_section.max_section and c.invalid = FALSE
+        WHERE c.section_index <= max_section.max_section AND c.invalid = FALSE
     ) AS q
     WHERE rn <= 10
     GROUP BY cell_id
@@ -126,9 +137,21 @@ RETURNING id;
 
 -- name: InsertCellScore :exec
 INSERT INTO cell_scores (
-    cell_id, score
+    cell_id, epoch, score
 ) VALUES (
-    $1, $2
+    $1,
+    (SELECT epoch FROM epochs LIMIT 1),
+    $2
+);
+
+-- name: InsertPlaceholderCellScore :exec
+INSERT INTO cell_scores (
+    cell_id, epoch, score, placeholder
+) VALUES (
+    $1,
+    (SELECT epoch FROM epochs LIMIT 1),
+    0.0,
+    TRUE
 );
 
 -- name: IncrementCellVisit :exec
@@ -139,7 +162,33 @@ WHERE id = $1;
 -- name: SetCellInvalid :exec
 UPDATE cells
 SET invalid = TRUE
-where id = $1;
+WHERE id = $1;
+
+-- name: InsertCellScoreMetrics :exec
+WITH aggregated_scores AS (
+    SELECT 
+        epoch,
+        cell_id,
+        MIN(score) AS min_score,
+        MAX(score) AS max_score,
+        AVG(score) AS mean_score,
+        STDDEV_POP(score) AS std_score,
+        COUNT(score) AS visits
+    FROM cell_scores
+    WHERE epoch = (SELECT epoch FROM epochs LIMIT 1) AND placeholder = FALSE
+    GROUP BY epoch, cell_id
+)
+INSERT INTO cell_score_metrics (epoch, cell_id, min_score, max_score, mean_score, std_score, visits)
+SELECT
+    ag.epoch,
+    ag.cell_id,
+    ag.min_score,
+    ag.max_score,
+    ag.mean_score,
+    ag.std_score,
+    ag.visits
+FROM aggregated_scores AS ag
+JOIN cells AS c ON ag.cell_id = c.id;
 
 -- name: DeleteOldCellScores :exec
 WITH ranked_scores AS (

@@ -216,6 +216,8 @@ class MarioLandEnv(Env):
         self.stateManager.init_schema()
         # delete existing cells and cell scores from a previous run
         self.stateManager.delete_cells_and_cell_scores()
+        # reset the current epoch
+        self.stateManager.upsert_epoch()
 
         for idx, name in enumerate(self.levelOrder):
             self.stateManager.insert_section(name, idx)
@@ -248,9 +250,6 @@ class MarioLandEnv(Env):
     ) -> Tuple[Any, Dict[str, Any]]:
         super().reset(seed=seed)
 
-        if self.prevState is None:
-            self.prevState = self.gameState()
-
         self.prevState, prevAction = self._reset(options=options)
 
         self._held_buttons = {button: False for button in self._buttons}
@@ -267,11 +266,6 @@ class MarioLandEnv(Env):
         return self.getObservation(), {}
 
     def _reset(self, options: dict[str, Any]) -> Tuple[MarioLandGameState, int]:
-        # delete old cell score entries so querying the DB doesn't
-        # slow too much
-        if self.isEval:
-            self.stateManager.delete_old_cell_scores()
-
         # reset counters
         self.cellScore = 0.0
         self.cellCheckCounter = 0
@@ -338,7 +332,6 @@ class MarioLandEnv(Env):
                 self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL] = 1
 
             curState = self.gameState()
-            self._handlePowerup(curState)
         elif not self.isEval:
             # make starting lives random so NN can learn to strategically
             # handle lives
@@ -353,30 +346,14 @@ class MarioLandEnv(Env):
             # stochastic
             curState = self.gameState()
             if initial and random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
-                # 0: small with star
                 # 1: big
-                # 2: big with star
-                # 3: fire flower
-                # 4: fire flower with star
-                gotStar = False
-                randPowerup = random.randint(0, 4)
-                # TODO: change back when pyboy bug is fixed
-                if False:  # randPowerup in (0, 2, 4):
-                    gotStar = True
-                    self.pyboy.memory[STAR_TIMER_MEM_VAL] = 0xF8
-                    # set star song so timer functions correctly
-                    self.pyboy.memory[0xDFE8] = 0x0C
-                if randPowerup != STATUS_SMALL:
-                    self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
-                    if randPowerup > 2:
-                        self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL] = 1
+                # 2: fire flower
+                randPowerup = random.randint(1, 2)
+                self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
+                if randPowerup == STATUS_FIRE:
+                    self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL] = 1
 
                 curState = self.gameState()
-                if gotStar:
-                    curState.gotStar = True
-                    curState.hasStar = True
-                    curState.isInvincible = True
-                self._handlePowerup(curState)
         else:
             if DEFAULT_POWERUP != STATUS_SMALL:
                 self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
@@ -867,10 +844,21 @@ class MarioLandEnv(Env):
 
     def handleCells(self, curState: MarioLandGameState, action: int, reward: float, done: bool):
         if self.isEval:
-            if done and self.levelStr > self.maxLevel:
-                self.maxLevel = self.levelStr
-                maxLevelIdx = self.levelOrder.index(self.maxLevel)
-                self.stateManager.update_max_section(maxLevelIdx)
+            if done:
+                # if a new level was completed in an eval allow the next
+                # level to be directly trained on
+                if self.levelStr > self.maxLevel:
+                    self.maxLevel = self.levelStr
+                    maxLevelIdx = self.levelOrder.index(self.maxLevel)
+                    self.stateManager.update_max_section(maxLevelIdx)
+
+                # add cell score metrics to DB so we can analyze what states
+                # were trained on since the last eval
+                self.stateManager.insert_cell_score_metrics()
+                self.stateManager.increment_epoch()
+                # delete old cell score entries so querying the DB doesn't
+                # slow too much
+                self.stateManager.delete_old_cell_scores()
             return
 
         self.cellScore += reward

@@ -52,7 +52,7 @@ class StateManager(object):
             )
             if id is None:
                 return
-            q.insert_cell_score(cell_id=id, score=decimal.Decimal(0))
+            q.insert_placeholder_cell_score(cell_id=id)
             conn.commit()
 
     def insert_cell(
@@ -77,7 +77,7 @@ class StateManager(object):
             )
             if id is None:
                 return
-            q.insert_cell_score(cell_id=id, score=decimal.Decimal(0))
+            q.insert_placeholder_cell_score(cell_id=id)
             conn.commit()
 
     def upsert_max_section(self, section_index: int):
@@ -90,6 +90,24 @@ class StateManager(object):
         with self.engine.connect() as conn:
             q = Querier(conn)
             q.update_max_section(section_index=section_index)
+            conn.commit()
+
+    def upsert_epoch(self):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.upsert_epoch()
+            conn.commit()
+
+    def increment_epoch(self):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.increment_epoch()
+            conn.commit()
+
+    def insert_cell_score_metrics(self):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.insert_cell_score_metrics()
             conn.commit()
 
     def get_random_cell(self) -> Tuple[int, int, int, bool, memoryview]:

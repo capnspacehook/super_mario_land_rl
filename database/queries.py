@@ -98,7 +98,7 @@ WITH max_section AS (
         JOIN cells AS c
         ON c.id = cs.cell_id
         CROSS JOIN max_section
-        WHERE c.section_index <= max_section.max_section and c.invalid = FALSE
+        WHERE c.section_index <= max_section.max_section AND c.invalid = FALSE
     ) AS q
     WHERE rn <= 10
     GROUP BY cell_id
@@ -176,6 +176,13 @@ WHERE id = :p1
 """
 
 
+INCREMENT_EPOCH = """-- name: increment_epoch \\:exec
+UPDATE epochs
+SET epoch = epoch + 1
+WHERE id = 1
+"""
+
+
 INSERT_CELL = """-- name: insert_cell \\:one
 INSERT INTO cells (
     hash, hash_input, action, max_no_ops, initial, section_index, state
@@ -189,9 +196,51 @@ RETURNING id
 
 INSERT_CELL_SCORE = """-- name: insert_cell_score \\:exec
 INSERT INTO cell_scores (
-    cell_id, score
+    cell_id, epoch, score
 ) VALUES (
-    :p1, :p2
+    :p1,
+    (SELECT epoch FROM epochs LIMIT 1),
+    :p2
+)
+"""
+
+
+INSERT_CELL_SCORE_METRICS = """-- name: insert_cell_score_metrics \\:exec
+WITH aggregated_scores AS (
+    SELECT 
+        epoch,
+        cell_id,
+        MIN(score) AS min_score,
+        MAX(score) AS max_score,
+        AVG(score) AS mean_score,
+        STDDEV_POP(score) AS std_score,
+        COUNT(score) AS visits
+    FROM cell_scores
+    WHERE epoch = (SELECT epoch FROM epochs LIMIT 1) AND placeholder = FALSE
+    GROUP BY epoch, cell_id
+)
+INSERT INTO cell_score_metrics (epoch, cell_id, min_score, max_score, mean_score, std_score, visits)
+SELECT
+    ag.epoch,
+    ag.cell_id,
+    ag.min_score,
+    ag.max_score,
+    ag.mean_score,
+    ag.std_score,
+    ag.visits
+FROM aggregated_scores AS ag
+JOIN cells AS c ON ag.cell_id = c.id
+"""
+
+
+INSERT_PLACEHOLDER_CELL_SCORE = """-- name: insert_placeholder_cell_score \\:exec
+INSERT INTO cell_scores (
+    cell_id, epoch, score, placeholder
+) VALUES (
+    :p1,
+    (SELECT epoch FROM epochs LIMIT 1),
+    0.0,
+    TRUE
 )
 """
 
@@ -205,7 +254,7 @@ VALUES (:p1, :p2)
 SET_CELL_INVALID = """-- name: set_cell_invalid \\:exec
 UPDATE cells
 SET invalid = TRUE
-where id = :p1
+WHERE id = :p1
 """
 
 
@@ -213,6 +262,14 @@ UPDATE_MAX_SECTION = """-- name: update_max_section \\:exec
 UPDATE max_sections
 SET section_index = :p1
 WHERE id = 1
+"""
+
+
+UPSERT_EPOCH = """-- name: upsert_epoch \\:exec
+INSERT INTO epochs (id, epoch)
+VALUES (1, 0)
+ON CONFLICT (id) DO UPDATE
+SET epoch = 0
 """
 
 
@@ -282,6 +339,9 @@ class Querier:
     def increment_cell_visit(self, *, id: int) -> None:
         self._conn.execute(sqlalchemy.text(INCREMENT_CELL_VISIT), {"p1": id})
 
+    def increment_epoch(self) -> None:
+        self._conn.execute(sqlalchemy.text(INCREMENT_EPOCH))
+
     def insert_cell(self, *, hash: str, hash_input: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, section_index: int, state: memoryview) -> Optional[int]:
         row = self._conn.execute(sqlalchemy.text(INSERT_CELL), {
             "p1": hash,
@@ -299,6 +359,12 @@ class Querier:
     def insert_cell_score(self, *, cell_id: int, score: decimal.Decimal) -> None:
         self._conn.execute(sqlalchemy.text(INSERT_CELL_SCORE), {"p1": cell_id, "p2": score})
 
+    def insert_cell_score_metrics(self) -> None:
+        self._conn.execute(sqlalchemy.text(INSERT_CELL_SCORE_METRICS))
+
+    def insert_placeholder_cell_score(self, *, cell_id: int) -> None:
+        self._conn.execute(sqlalchemy.text(INSERT_PLACEHOLDER_CELL_SCORE), {"p1": cell_id})
+
     def insert_section(self, *, name: str, index: int) -> None:
         self._conn.execute(sqlalchemy.text(INSERT_SECTION), {"p1": name, "p2": index})
 
@@ -307,6 +373,9 @@ class Querier:
 
     def update_max_section(self, *, section_index: Optional[int]) -> None:
         self._conn.execute(sqlalchemy.text(UPDATE_MAX_SECTION), {"p1": section_index})
+
+    def upsert_epoch(self) -> None:
+        self._conn.execute(sqlalchemy.text(UPSERT_EPOCH))
 
     def upsert_max_section(self, *, section_index: Optional[int]) -> None:
         self._conn.execute(sqlalchemy.text(UPSERT_MAX_SECTION), {"p1": section_index})

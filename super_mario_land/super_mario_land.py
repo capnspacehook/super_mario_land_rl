@@ -88,7 +88,7 @@ class MarioLandEnv(Env):
         self.forwardRewardCoef = config.forward_reward
         self.progressRewardCoef = config.progress_reward
         self.backwardsPunishmentCoef = config.backwards_punishment
-        self.waitReward = 0.25
+        self.waitReward = config.wait_reward
         self.powerupReward = config.powerup_reward
         self.hitPunishment = config.hit_punishment
         self.heartReward = config.heart_reward
@@ -99,7 +99,7 @@ class MarioLandEnv(Env):
         self.levelClearLivesRewardCoef = self.levelClearReward / 10
         self.levelClearPowerupReward = self.levelClearReward / 20
         self.deathPunishment = config.death_punishment
-        self.gameOverPunishment = self.deathPunishment * 1.33
+        self.gameOverPunishment = config.game_over_punishment
         self.starPunishment = self.gameOverPunishment
         self.heartFarmingPunishment = self.gameOverPunishment
         self.coinReward = config.coin_reward
@@ -919,9 +919,9 @@ class MarioLandEnv(Env):
                         # loading the state skewing training
                         for obj in curState.objects:
                             if obj.typeID in ENEMY_TYPE_IDS:
-                                x = np.array((curState.xPos, obj.xPos))
-                                y = np.array((curState.yPos, obj.yPos))
-                                distance = np.linalg.norm(x - y)
+                                marioPos = np.array((curState.xPos, curState.yPos))
+                                enemyPos = np.array((obj.xPos, obj.yPos))
+                                distance = np.linalg.norm(marioPos - enemyPos)
                                 if distance < EMEMY_SAFE_DISTANCE:
                                     unsafeState = True
                                     break

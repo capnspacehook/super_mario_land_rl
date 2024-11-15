@@ -14,9 +14,7 @@ from super_mario_land.settings import *
 
 class Recurrent(LSTMWrapper):
     def __init__(self, env, policy, config):
-        super().__init__(
-            env, policy, config.features_fc_hidden_units, config.lstm_hidden_units, config.lstm_layers
-        )
+        super().__init__(env, policy, config.features_fc_hidden_units, config.lstm_hidden_units, 1)
 
 
 class Policy(nn.Module):
@@ -27,7 +25,6 @@ class Policy(nn.Module):
         gameAreaEmbeddingDims = config.game_area_embedding_dimensions
         cnnFilters = config.cnn_filters
         entityIDEmbeddingDims = config.entity_id_embedding_dimensions
-        featuresFCLayers = config.features_fc_layers
         featuresFCHiddenUnits = config.features_fc_hidden_units
         lstmHiddenUnits = config.lstm_hidden_units
         actorHiddenUnits = config.actor_hidden_units
@@ -45,11 +42,9 @@ class Policy(nn.Module):
         self.gameAreaEmbedding = nn.Embedding(MAX_TILE + 1, gameAreaEmbeddingDims)
 
         self.gameAreaCNN = nn.Sequential(
-            layer_init(nn.Conv2d(gameAreaEmbeddingDims, cnnFilters, kernel_size=2, stride=1, padding=1)),
+            layer_init(nn.Conv2d(gameAreaEmbeddingDims, cnnFilters, kernel_size=3, stride=2)),
             activationFn(),
-            layer_init(nn.Conv2d(cnnFilters, cnnFilters, kernel_size=2, stride=2, padding=1)),
-            activationFn(),
-            layer_init(nn.Conv2d(cnnFilters, cnnFilters, kernel_size=2, stride=2, padding=1)),
+            layer_init(nn.Conv2d(cnnFilters, cnnFilters, kernel_size=3, stride=2)),
             activationFn(),
             nn.Flatten(),
         )
@@ -61,19 +56,10 @@ class Policy(nn.Module):
         featureDims = (
             cnnOutputSize + MARIO_INFO_SIZE + (10 * (entityIDEmbeddingDims + ENTITY_INFO_SIZE)) + SCALAR_SIZE
         )
-        # TODO: support more layers if needed
-        if featuresFCLayers == 1:
-            self.featuresFC = nn.Sequential(
-                layer_init(nn.Linear(featureDims, featuresFCHiddenUnits)),
-                activationFn(),
-            )
-        else:
-            self.featuresFC = nn.Sequential(
-                layer_init(nn.Linear(featureDims, featuresFCHiddenUnits)),
-                activationFn(),
-                layer_init(nn.Linear(featuresFCHiddenUnits, featuresFCHiddenUnits)),
-                activationFn(),
-            )
+        self.featuresFC = nn.Sequential(
+            layer_init(nn.Linear(featureDims, featuresFCHiddenUnits)),
+            activationFn(),
+        )
 
         actor = [
             layer_init(nn.Linear(lstmHiddenUnits, actorHiddenUnits), std=0.01),

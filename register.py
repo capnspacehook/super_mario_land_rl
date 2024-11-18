@@ -16,11 +16,12 @@ def createSMLEnv(
     isEval: bool = False,
     isPlaytest: bool = False,
     isInteractiveEval: bool = False,
+    cellID: int = 0,
 ) -> gym.Env:
     debug = False
     logLvl = "ERROR"
     if isPlaytest:
-        debug = True
+        # debug = True
         logLvl = "INFO"
 
     shouldRender = render or isPlaytest or isInteractiveEval
@@ -43,6 +44,7 @@ def createSMLEnv(
         isEval=isEval,
         isPlaytest=isPlaytest,
         isInteractiveEval=isInteractiveEval,
+        cellID=cellID,
     )
 
     if not isEval:

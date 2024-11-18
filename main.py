@@ -214,6 +214,7 @@ if __name__ == "__main__":
     parser.add_argument("--sweep-child", action="store_true")
     parser.add_argument("--eval-model-path", type=str, default=None, help="Path to model to evaluate")
     parser.add_argument("--render", action="store_true", help="Enable rendering")
+    parser.add_argument("--cell-id", type=int, default=0)
     parser.add_argument("--wandb-entity", type=str, default="capnspacehook", help="WandB entity")
     parser.add_argument("--wandb-project", type=str, default="Super Mario Land", help="WandB project")
     parser.add_argument("--wandb-group", type=str, default="", help="WandB group")
@@ -323,7 +324,7 @@ if __name__ == "__main__":
             env = pufferlib.vector.make(
                 createSMLEnv,
                 env_args=(args.train,),
-                env_kwargs=dict(render=args.render, isEval=True, isInteractiveEval=True),
+                env_kwargs=dict(render=args.render, isEval=True, isInteractiveEval=True, cellID=args.cell_id),
             )
 
             if args.eval_model_path is None:
@@ -337,7 +338,7 @@ if __name__ == "__main__":
             os._exit(0)
     elif args.mode == "playtest":
         try:
-            env = createSMLEnv(args.train, render=True, isPlaytest=True)
+            env = createSMLEnv(args.train, render=True, isPlaytest=True, cellID=args.cell_id)
             obs, _ = env.reset()
             while True:
                 obs, rew, term, trunc, _ = env.step(0)

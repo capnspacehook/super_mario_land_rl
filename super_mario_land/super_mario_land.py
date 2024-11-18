@@ -47,6 +47,7 @@ class MarioLandEnv(Env):
         isEval: bool = False,
         isPlaytest: bool = False,
         isInteractiveEval: bool = False,
+        cellID: int = 0,
         stateDir: Path = Path("states"),
     ) -> None:
         self.pyboy = pyboy
@@ -55,8 +56,13 @@ class MarioLandEnv(Env):
         self.isPlaytest = isPlaytest
         self.isInteractiveEval = isInteractiveEval
         self.shouldRender = render or self.isEval or self.isPlaytest or self.isInteractiveEval
+        self.shouldRenderAll = render or self.isPlaytest or self.isInteractiveEval
         self.shouldRecord = self.isEval and not self.isInteractiveEval
         self.interactive = False
+
+        self.loadCellID = None
+        if self.isPlaytest or self.isInteractiveEval and cellID != 0:
+            self.loadCellID = cellID
 
         if self.isInteractiveEval:
             self.pyboy.set_emulation_speed(1)
@@ -280,7 +286,9 @@ class MarioLandEnv(Env):
         self.invalidLevel = False
 
         # load new cell
-        if self.isEval:
+        if self.loadCellID is not None:
+            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_cell(self.loadCellID)
+        elif self.isEval:
             levelIdx = self.levelOrder.index(START_LEVEL)
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell(levelIdx)
         else:
@@ -412,7 +420,7 @@ class MarioLandEnv(Env):
                 self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
                 self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_B)
 
-                self.pyboy.tick(count=nopFrames, render=False)
+                self.pyboy.tick(count=nopFrames, render=self.shouldRenderAll)
                 curState = self.gameState()
                 # set cell as invalid just in case a cell was added that
                 # will cause mario to die almost immediately
@@ -761,11 +769,11 @@ class MarioLandEnv(Env):
             statusTimer = curState.statusTimer
             gameState = curState.gameState
             while gameState in (3, 4) or (gameState == 1 and statusTimer != 0):
-                self.pyboy.tick(render=False)
+                self.pyboy.tick(render=self.shouldRenderAll)
                 gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
                 statusTimer = self.pyboy.memory[STATUS_TIMER_MEM_VAL]
 
-            self.pyboy.tick(count=5, render=False)
+            self.pyboy.tick(count=5, render=self.shouldRenderAll)
 
             curState = self.gameState(curState)
 
@@ -803,7 +811,7 @@ class MarioLandEnv(Env):
         if curState.pipeWarping:
             gameState = curState.gameState
             while gameState != 0:
-                self.pyboy.tick(render=False)
+                self.pyboy.tick(render=self.shouldRenderAll)
                 gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
 
             return self.gameState(curState)
@@ -880,46 +888,32 @@ class MarioLandEnv(Env):
                 self.pyboy.save_state(state)
                 state.seek(0)
 
+                # ensure loading from the state won't almost instantly kill mario
+                self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
+                self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
+                self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
+                self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_B)
+
+                unsafeState = False
+                initialPowerupStatus = self.pyboy.memory[POWERUP_STATUS_MEM_VAL]
+                # if mario dies without moving in less than 2 seconds
+                # don't save the state; we don't want to load states
+                # that will result in an unpreventable death
+                for _ in range(30):
+                    self.pyboy.tick(count=4, render=False)
+                    if not self._stateSafe(initialPowerupStatus):
+                        unsafeState = True
+                        break
+
+                self.pyboy.load_state(state)
+                if unsafeState:
+                    return
+
                 maxNOOPs = RANDOM_NOOP_FRAMES
-
-                # ensure loading from the state won't instantly kill mario
                 if any((obj.typeID in ENEMY_TYPE_IDS for obj in curState.objects)):
-                    self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
-                    self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
-                    self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
-                    self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_B)
-
-                    unsafeState = False
-                    # if mario dies without moving in less than 2 seconds
-                    # don't save the state; we don't want to load states
-                    # that will result in an unpreventable death
-                    for _ in range(20):
-                        self.pyboy.tick(count=6, render=False)
-                        if (
-                            self.pyboy.memory[GAME_STATE_MEM_VAL] != 0
-                            or self.pyboy.memory[MARIO_ON_GROUND_MEM_VAL] == 0
-                        ):
-                            unsafeState = True
-                            break
-
-                        # don't save states where an enemy gets really close
-                        # to mario, agents will likely almost always die when
-                        # loading the state skewing training
-                        for obj in curState.objects:
-                            if obj.typeID in ENEMY_TYPE_IDS:
-                                marioPos = np.array((curState.xPos, curState.yPos))
-                                enemyPos = np.array((obj.xPos, obj.yPos))
-                                distance = np.linalg.norm(marioPos - enemyPos)
-                                if distance < EMEMY_SAFE_DISTANCE:
-                                    unsafeState = True
-                                    break
-
-                    self.pyboy.load_state(state)
-                    if unsafeState:
-                        return
-
-                    state.seek(0)
                     maxNOOPs = RANDOM_NOOP_FRAMES_WITH_ENEMIES
+
+                state.seek(0)
 
                 try:
                     levelName = f"{curState.world[0]}-{curState.world[1]}"
@@ -966,6 +960,32 @@ class MarioLandEnv(Env):
 
         input = f"{curState.world}|{roundedXPos}|{roundedYPos}|{curState.powerupStatus}/{objectTypes}"
         return hashlib.md5(input.encode("utf-8")).hexdigest(), input
+
+    def _stateSafe(self, initialPowerupStatus: int) -> bool:
+        # don't save states where the game is in a special state
+        # or is killed, where mario is not on the ground, or he gets hit
+        if (
+            self.pyboy.memory[GAME_STATE_MEM_VAL] != 0
+            or self.pyboy.memory[MARIO_ON_GROUND_MEM_VAL] == 0
+            or self.pyboy.memory[POWERUP_STATUS_MEM_VAL] != initialPowerupStatus
+        ):
+            return False
+
+        # don't save states where an enemy gets really close
+        # to mario, agents will likely almost always die when
+        # loading the state skewing training
+        curState = self.gameState()
+        for obj in curState.objects:
+            if obj.typeID not in ENEMY_TYPE_IDS:
+                continue
+
+            marioPos = np.array((curState.xPos, curState.yPos))
+            enemyPos = np.array((obj.xPos, obj.yPos))
+            distance = np.linalg.norm(marioPos - enemyPos)
+            if distance < EMEMY_SAFE_DISTANCE:
+                return False
+
+        return True
 
     def sendInputs(self, actions: list[int]):
         # release buttons that were pressed in the past that are not

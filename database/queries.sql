@@ -137,20 +137,22 @@ RETURNING id;
 
 -- name: InsertCellScore :exec
 INSERT INTO cell_scores (
-    cell_id, epoch, score
+    cell_id, epoch, score, length
 ) VALUES (
     $1,
     (SELECT epoch FROM epochs LIMIT 1),
-    $2
+    $2,
+    $3
 );
 
 -- name: InsertPlaceholderCellScore :exec
 INSERT INTO cell_scores (
-    cell_id, epoch, score, placeholder
+    cell_id, epoch, score, length, placeholder
 ) VALUES (
     $1,
     (SELECT epoch FROM epochs LIMIT 1),
     0.0,
+    0,
     TRUE
 );
 
@@ -173,12 +175,28 @@ WITH aggregated_scores AS (
         MAX(score) AS max_score,
         AVG(score) AS mean_score,
         STDDEV_POP(score) AS std_score,
+        MIN(length) AS min_length,
+        MAX(length) AS max_length,
+        AVG(length) AS mean_length,
+        STDDEV_POP(length) AS std_length,
         COUNT(score) AS visits
     FROM cell_scores
     WHERE epoch = (SELECT epoch FROM epochs LIMIT 1) AND placeholder = FALSE
     GROUP BY epoch, cell_id
 )
-INSERT INTO cell_score_metrics (epoch, cell_id, min_score, max_score, mean_score, std_score, visits)
+INSERT INTO cell_score_metrics (
+    epoch,
+    cell_id,
+    min_score,
+    max_score,
+    mean_score,
+    std_score,
+    min_length,
+    max_length,
+    mean_length,
+    std_length,
+    visits
+)
 SELECT
     ag.epoch,
     ag.cell_id,
@@ -186,6 +204,10 @@ SELECT
     ag.max_score,
     ag.mean_score,
     ag.std_score,
+    ag.min_length,
+    ag.max_length,
+    ag.mean_length,
+    ag.std_length,
     ag.visits
 FROM aggregated_scores AS ag
 JOIN cells AS c ON ag.cell_id = c.id;

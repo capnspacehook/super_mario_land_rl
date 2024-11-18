@@ -69,7 +69,8 @@ class MarioLandEnv(Env):
 
         self.isEval = isEval
         self.maxLevel = MAX_START_LEVEL
-        self.cellScore = 0.0
+        self.episodeReward = 0.0
+        self.episodeLength = 0
         self.cellID = 0
         self.cellCheckCounter = 0
         self.levelStr = ""
@@ -273,7 +274,8 @@ class MarioLandEnv(Env):
 
     def _reset(self, options: dict[str, Any]) -> Tuple[MarioLandGameState, int]:
         # reset counters
-        self.cellScore = 0.0
+        self.episodeReward = 0.0
+        self.episodeLength = 0
         self.cellCheckCounter = 0
         self.episodeProgress = 0
         self.levelClearCounter = 0
@@ -485,6 +487,8 @@ class MarioLandEnv(Env):
         elif not self.isPlaytest:
             self.sendInputs(actions)
 
+        self.episodeLength += 1
+
         # handle frame skip here to avoid computing unused observations
         totalReward = 0.0
         for i in range(FRAME_SKIP):
@@ -503,6 +507,7 @@ class MarioLandEnv(Env):
             # compute reward, handle dying or level completion
             reward = self.reward(actions, curState) * self.rewardScale
             totalReward += reward
+            self.episodeReward += reward
 
             if self.shouldRecord:
                 self.recorder.recordStep(self.render, actionIdx, reward)
@@ -515,7 +520,7 @@ class MarioLandEnv(Env):
             # save current state as a cell, record cell score if the episode
             # has ended
             if not self.isPlaytest:
-                self.handleCells(curState, int(actionIdx), reward, done)
+                self.handleCells(curState, int(actionIdx), done)
 
             # don't update the previous game state yet if we need to
             # compute an observation so it can use the actual previous
@@ -603,7 +608,7 @@ class MarioLandEnv(Env):
         # forward or upwards to encourage waiting on platforms until a
         # more optimal jump can be made
         movingPlatform = 0
-        _, onMovingPlatform = self._standingOnMovingPlatform(curState)
+        onMovingPlatform = self._standingOnMovingPlatform(curState)
         # don't reward when moving forward on a moving platform
         if onGround and onMovingPlatform and actions == [WindowEvent.PASS]:
             ySpeed = np.clip(curState.yPos - self.prevState.yPos, -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
@@ -681,11 +686,11 @@ class MarioLandEnv(Env):
 
         return reward
 
-    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> Tuple[MarioLandObject | None, bool]:
+    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> bool:
         for obj in curState.objects:
             if obj.typeID == MOVING_PLATFORM_TYPE_ID and curState.yPos - 10 == obj.yPos:
-                return obj, True
-        return None, False
+                return True
+        return False
 
     def _standingOnTiles(self, tiles: List[int]) -> bool:
         sprites = self.pyboy.get_sprite_by_tile_identifier(tiles, on_screen=True)
@@ -850,7 +855,7 @@ class MarioLandEnv(Env):
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.gameState in GAME_STATES_DEAD
 
-    def handleCells(self, curState: MarioLandGameState, action: int, reward: float, done: bool):
+    def handleCells(self, curState: MarioLandGameState, action: int, done: bool):
         if self.isEval:
             if done:
                 # if a new level was completed in an eval allow the next
@@ -869,10 +874,8 @@ class MarioLandEnv(Env):
                 self.stateManager.delete_old_cell_scores()
             return
 
-        self.cellScore += reward
-
         if done:
-            self.stateManager.record_score(self.cellID, float(self.cellScore))
+            self.stateManager.record_score(self.cellID, float(self.episodeReward), self.episodeLength)
             return
 
         # only check if this cell is new every N frames to avoid
@@ -931,6 +934,7 @@ class MarioLandEnv(Env):
             self.onGroundFor != ON_GROUND_FRAMES
             or curState.gameState != 0
             or curState.xPos > LEVEL_END_X_POS[self.levelStr] - 30
+            or self._standingOnMovingPlatform(curState)
         ):
             return None, None
 
@@ -943,9 +947,7 @@ class MarioLandEnv(Env):
         # avoid tons of different cells from mario just riding a platform
         # that are basically the same
         roundedYPos = 0
-        _, onMovingPlat = self._standingOnMovingPlatform(curState)
-        if not onMovingPlat:
-            roundedYPos = Y_POS_MULTIPLE * floor(curState.yPos / Y_POS_MULTIPLE)
+        roundedYPos = Y_POS_MULTIPLE * floor(curState.yPos / Y_POS_MULTIPLE)
 
         objectTypes = ""
         # sort objects by the type ID to prevent different cells that
@@ -982,7 +984,7 @@ class MarioLandEnv(Env):
             marioPos = np.array((curState.xPos, curState.yPos))
             enemyPos = np.array((obj.xPos, obj.yPos))
             distance = np.linalg.norm(marioPos - enemyPos)
-            if distance < EMEMY_SAFE_DISTANCE:
+            if distance < ENEMY_SAFE_DISTANCE:
                 return False
 
         return True
@@ -1019,6 +1021,8 @@ class MarioLandEnv(Env):
 
     def info(self, curState: MarioLandGameState) -> Dict[str, Any]:
         return {
+            "reward": self.episodeReward,
+            "length": self.episodeLength,
             "progress": self.episodeProgress,
             "levels_cleared": self.levelClearCounter,
             "deaths": self.deathCounter,

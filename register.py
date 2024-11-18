@@ -5,7 +5,6 @@ from pufferlib.emulation import GymnasiumPufferEnv
 from pyboy import PyBoy
 
 from super_mario_land.super_mario_land import MarioLandEnv
-from wrappers import MonitorTraining
 
 
 def createSMLEnv(
@@ -46,8 +45,5 @@ def createSMLEnv(
         isInteractiveEval=isInteractiveEval,
         cellID=cellID,
     )
-
-    if not isEval:
-        env = MonitorTraining(env)
 
     return GymnasiumPufferEnv(env)

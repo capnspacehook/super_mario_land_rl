@@ -28,7 +28,6 @@ from sweep import sweep
 from super_mario_land.policy import Policy, Recurrent
 import super_mario_land.settings
 from register import createSMLEnv
-from wrappers import VecRunningMean
 
 
 def get_constants(module):

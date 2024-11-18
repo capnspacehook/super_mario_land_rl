@@ -2,7 +2,6 @@
 # versions:
 #   sqlc v1.27.0
 import dataclasses
-import decimal
 from typing import Optional
 
 
@@ -25,7 +24,8 @@ class CellScore:
     id: int
     cell_id: int
     epoch: int
-    score: decimal.Decimal
+    score: float
+    length: int
     placeholder: bool
 
 
@@ -34,10 +34,14 @@ class CellScoreMetric:
     id: int
     epoch: int
     cell_id: int
-    min_score: decimal.Decimal
-    max_score: decimal.Decimal
-    mean_score: decimal.Decimal
-    std_score: decimal.Decimal
+    min_score: float
+    max_score: float
+    mean_score: float
+    std_score: float
+    min_length: float
+    max_length: float
+    mean_length: float
+    std_length: float
     visits: int
 
 

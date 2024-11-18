@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS cell_scores (
     cell_id     INTEGER        NOT NULL REFERENCES cells(id),
     epoch       INTEGER        NOT NULL,
     score       REAL           NOT NULL,
+    length      INTEGER        NOT NULL,
     placeholder BOOLEAN        NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS idx_cell_scores_cell_id ON cell_scores(cell_id);
@@ -39,12 +40,16 @@ CREATE TABLE IF NOT EXISTS epochs (
 );
 
 CREATE TABLE IF NOT EXISTS cell_score_metrics (
-    id         SERIAL PRIMARY KEY,
-    epoch      INTEGER NOT NULL,
-    cell_id    INTEGER NOT NULL REFERENCES cells(id),
-    min_score  REAL    NOT NULL,
-    max_score  REAL    NOT NULL,
-    mean_score REAL    NOT NULL,
-    std_score  REAL    NOT NULL,
-    visits     INTEGER NOT NULL
+    id          SERIAL PRIMARY KEY,
+    epoch       INTEGER NOT NULL,
+    cell_id     INTEGER NOT NULL REFERENCES cells(id),
+    min_score   REAL    NOT NULL,
+    max_score   REAL    NOT NULL,
+    mean_score  REAL    NOT NULL,
+    std_score   REAL    NOT NULL,
+    min_length  REAL    NOT NULL,
+    max_length  REAL    NOT NULL,
+    mean_length REAL    NOT NULL,
+    std_length  REAL    NOT NULL,
+    visits      INTEGER NOT NULL
 );

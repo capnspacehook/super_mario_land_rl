@@ -124,10 +124,10 @@ class StateManager(object):
             result = q.get_first_cell(section_index=section_index)
             return result.id, result.action, result.max_no_ops, result.initial, result.state
 
-    def record_score(self, cell_id: int, score: float):
+    def record_score(self, cell_id: int, score: float, length: int):
         with self.engine.connect() as conn:
             q = Querier(conn)
-            q.insert_cell_score(cell_id=cell_id, score=decimal.Decimal(score))
+            q.insert_cell_score(cell_id=cell_id, score=decimal.Decimal(score), length=length)
             q.increment_cell_visit(id=cell_id)
             conn.commit()
 
